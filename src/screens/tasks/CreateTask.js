@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { StyleSheet, View, FlatList, Alert, BackHandler } from "react-native";
+import { StyleSheet, View, FlatList, Alert, BackHandler, ScrollView } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { Appbar, useTheme, TextInput, Text, Switch, SegmentedButtons, Button, Surface, Chip, ActivityIndicator, Portal, Dialog } from "react-native-paper";
+import { Appbar, useTheme, TextInput, Text, Switch, SegmentedButtons, Button, Surface, Chip, ActivityIndicator, Portal, Dialog, Checkbox } from "react-native-paper";
 import { DatePickerInput} from "react-native-paper-dates";
 import { createTask } from '../../firebase/services/tasksService';
+import { generateSubtasks, generateNestedSubtasks } from '../../services/openRouterService';
 
 import TagChipList from "../../components/TagChipList";
 import TopAppBar from "../../TopAppBar";
@@ -49,28 +50,75 @@ const CreateScreen = ({ route, navigation }) => {
 
   //states for subtask rendering
   const [subtasksVisible, setSubtasksVisible] = useState(false);
-  const [subtasksLoading, setSubtasksLoading] = useState(null);
-  const [generatedSubtasks, setGeneratedSubtasks] = useState([]);
+  const [subtasksLoading, setSubtasksLoading] = useState(false);
+  const [generatingNestedFor, setGeneratingNestedFor] = useState(null);
 
-  // this is just to simulate the api requests, for now...
-  const[dummySubtasks, setDummySubtasks] = useState([
-    { id: 1, completed: false, title: "do this subtask first", subtasks:[]},
-    { id: 2, completed: false, title: "then this one next", subtasks:[]},
-    { id: 3, completed: false, title: "then this one...", subtasks:[]},
-    { id: 4, completed: false, title: "then finally, this one :DD", subtasks:[]},
-  ]);
-  const doFakeSubtaskGeneration = () => {
+  const doSubtaskGeneration = async () => {
+    if (!fields.taskTitle.trim()) {
+      invalidInputDialog("Please enter a task title first");
+      return;
+    }
+
     setSubtasksVisible(true);
     setSubtasksLoading(true);
 
-    setTimeout(() => {
+    try {
+      const subtasks = await generateSubtasks(fields.taskTitle, fields.generatedSubtasks);
+      handleFieldChange("generatedSubtasks", subtasks);
+    } catch (error) {
+      console.error("Error generating subtasks:", error);
+      invalidInputDialog("Failed to generate subtasks. Please try again.");
+      setSubtasksVisible(false);
+    } finally {
       setSubtasksLoading(false);
-    }, 5000);
+    }
   };
 
   const cancelSubtaskGeneration = () => {
-    setSubtasksVisible(false)
+    setSubtasksVisible(false);
     setSubtasksLoading(false);
+  };
+
+  const handleGenerateNestedSubtasks = async (parentSubtaskIndex) => {
+    const parentSubtask = fields.generatedSubtasks[parentSubtaskIndex];
+    if (!parentSubtask) return;
+
+    setGeneratingNestedFor(parentSubtaskIndex);
+
+    try {
+      const nestedSubtasks = await generateNestedSubtasks(parentSubtask.title);
+      const updatedSubtasks = [...fields.generatedSubtasks];
+      updatedSubtasks[parentSubtaskIndex] = {
+        ...parentSubtask,
+        subtasks: [...(parentSubtask.subtasks || []), ...nestedSubtasks],
+      };
+      handleFieldChange("generatedSubtasks", updatedSubtasks);
+    } catch (error) {
+      console.error("Error generating nested subtasks:", error);
+      Alert.alert("Error", "Failed to generate nested subtasks. Please try again.");
+    } finally {
+      setGeneratingNestedFor(null);
+    }
+  };
+
+  const toggleSubtaskCompletion = (subtaskIndex) => {
+    const updatedSubtasks = [...fields.generatedSubtasks];
+    updatedSubtasks[subtaskIndex] = {
+      ...updatedSubtasks[subtaskIndex],
+      completed: !updatedSubtasks[subtaskIndex].completed,
+    };
+    handleFieldChange("generatedSubtasks", updatedSubtasks);
+  };
+
+  const toggleNestedSubtaskCompletion = (subtaskIndex, nestedIndex) => {
+    const updatedSubtasks = [...fields.generatedSubtasks];
+    if (!updatedSubtasks[subtaskIndex].subtasks) return;
+    
+    updatedSubtasks[subtaskIndex].subtasks[nestedIndex] = {
+      ...updatedSubtasks[subtaskIndex].subtasks[nestedIndex],
+      completed: !updatedSubtasks[subtaskIndex].subtasks[nestedIndex].completed,
+    };
+    handleFieldChange("generatedSubtasks", updatedSubtasks);
   };
 
   const toggleChipList = ()=>{
@@ -128,14 +176,23 @@ const CreateScreen = ({ route, navigation }) => {
     }
   };
 
-  const writeToDB = async (title, isUrgent, date, tags, subtasks) => {
-    // Convert subtasks to proper format for Firebase
-    const formattedSubtasks = (subtasks || []).map((subtask, index) => ({
+  // Recursively format subtasks to ensure nested structure is preserved
+  const formatSubtasksForFirestore = (subtasks) => {
+    if (!subtasks || !Array.isArray(subtasks)) {
+      return [];
+    }
+
+    return subtasks.map((subtask, index) => ({
       id: subtask.id || `subtask-${Date.now()}-${index}`,
       title: subtask.title || '',
       completed: subtask.completed || false,
-      subtasks: subtask.subtasks || []
+      subtasks: formatSubtasksForFirestore(subtask.subtasks) // Recursively format nested subtasks
     }));
+  };
+
+  const writeToDB = async (title, isUrgent, date, tags, subtasks) => {
+    // Convert subtasks to proper format for Firebase (handles nested subtasks recursively)
+    const formattedSubtasks = formatSubtasksForFirestore(subtasks);
 
     // Create task in Firebase
     await createTask({
@@ -213,6 +270,11 @@ const CreateScreen = ({ route, navigation }) => {
         title="Create a task"
         rightButtons={ [{icon:"check",action:saveTask, disabled: saving}] }//must be an array of objects with keys icon and action
       />
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
       <View style={styles.container}>
         
 
@@ -275,44 +337,97 @@ const CreateScreen = ({ route, navigation }) => {
         />
 
         {/* Subtask Generation */}
-        {/* //TODO: Add options for manual addtion of subtasks */}
+        <Text variant="labelMedium" style={{marginTop: 8}}>
+          Subtasks
+        </Text>
         <Button 
           icon="auto-fix" 
           mode="contained-tonal" 
-          disabled={!fields.taskTitle&&subtasksLoading} 
-          onPress={doFakeSubtaskGeneration}
+          disabled={!fields.taskTitle.trim() || subtasksLoading} 
+          onPress={doSubtaskGeneration}
+          loading={subtasksLoading}
         >
-          {!(subtasksVisible && !subtasksLoading) ? "Generate New Subtasks" : "Re-generate subtasks"}
+          {fields.generatedSubtasks.length === 0 ? "Generate Subtasks" : "Re-generate Subtasks"}
         </Button>
-        {subtasksLoading &&
+        {subtasksLoading && (
           <Button 
             icon="close" 
-            mode="contained-tonal" 
-            onPress={cancelSubtaskGeneration} 
+            mode="outlined" 
+            onPress={cancelSubtaskGeneration}
+            disabled={!subtasksLoading}
           >
-            Cancel Subtask Generation
+            Cancel
           </Button>
-        }
-        {/* Display the generated subtasks here */}
+        )}
+        
+        {/* Display the generated subtasks */}
         {subtasksVisible && (
           subtasksLoading ? (
-              <View style={[styles.horizontalContainer,{justifyContent:'center', alignItems:"center",gap:20}]}> 
-                <Text variant="labelLarge">
-                  Generating Subtasks
-                </Text>
-                <ActivityIndicator animating={true} color={theme.colors.primary} style={styles.subtaskLoadingCircle}/>
-              </View>
-            ):( 
-              <>
-                <FlatList
-                  data={dummySubtasks}
-                  style={{flexGrow:0}}
-                />
-                <Text>
-                  {"Finished generating :D (just pretend for now plsplspls)"}
-                </Text>
-              </>
-            )
+            <View style={[styles.horizontalContainer, {justifyContent:'center', alignItems:"center", gap:20, paddingVertical: 20}]}> 
+              <Text variant="labelLarge">
+                Generating Subtasks...
+              </Text>
+              <ActivityIndicator animating={true} color={theme.colors.primary} style={styles.subtaskLoadingCircle}/>
+            </View>
+          ) : fields.generatedSubtasks.length > 0 ? (
+            <View style={styles.subtasksContainer}>
+              {fields.generatedSubtasks.map((subtask, index) => (
+                <View key={subtask.id || index} style={styles.subtaskItem}>
+                  <View style={styles.subtaskRow}>
+                    <Checkbox
+                      status={subtask.completed ? "checked" : "unchecked"}
+                      onPress={() => toggleSubtaskCompletion(index)}
+                    />
+                    <Text 
+                      variant="bodyMedium" 
+                      style={[
+                        styles.subtaskText,
+                        subtask.completed && styles.subtaskTextCompleted
+                      ]}
+                    >
+                      {subtask.title}
+                    </Text>
+                    <Button
+                      icon="auto-fix"
+                      mode="text"
+                      compact
+                      onPress={() => handleGenerateNestedSubtasks(index)}
+                      disabled={generatingNestedFor === index}
+                      loading={generatingNestedFor === index}
+                    >
+                      Generate Sub-subtasks
+                    </Button>
+                  </View>
+                  {/* Nested Subtasks */}
+                  {subtask.subtasks && subtask.subtasks.length > 0 && (
+                    <View style={styles.nestedSubtasksContainer}>
+                      {subtask.subtasks.map((nestedSubtask, nestedIndex) => (
+                        <View key={nestedSubtask.id || nestedIndex} style={styles.nestedSubtaskItem}>
+                          <Checkbox
+                            status={nestedSubtask.completed ? "checked" : "unchecked"}
+                            onPress={() => toggleNestedSubtaskCompletion(index, nestedIndex)}
+                          />
+                          <Text 
+                            variant="bodySmall" 
+                            style={[
+                              styles.nestedSubtaskText,
+                              nestedSubtask.completed && styles.subtaskTextCompleted
+                            ]}
+                          >
+                            {nestedSubtask.title}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text variant="bodySmall" style={{textAlign: 'center', paddingVertical: 10}}>
+              No subtasks generated yet. Click "Generate Subtasks" to create them.
+            </Text>
+          )
         )}
 
         <Portal>
@@ -388,12 +503,20 @@ const CreateScreen = ({ route, navigation }) => {
         />
         */}
       </View>
+      </ScrollView>
     </>
   );
 };
 
 const createStyles = (theme) =>  
   StyleSheet.create({
+    scrollView: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    scrollContent: {
+      flexGrow: 1,
+    },
     container: { 
       flex: 1,
       padding: 20,
@@ -413,7 +536,44 @@ const createStyles = (theme) =>
     },
     horizontalContainer:{
       flexDirection:"row"
-    }
+    },
+    subtasksContainer: {
+      marginTop: 8,
+      padding: 8,
+      backgroundColor: theme.colors.surfaceVariant,
+      borderRadius: 8,
+    },
+    subtaskItem: {
+      marginBottom: 12,
+    },
+    subtaskRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    subtaskText: {
+      flex: 1,
+    },
+    subtaskTextCompleted: {
+      textDecorationLine: 'line-through',
+      opacity: 0.6,
+    },
+    nestedSubtasksContainer: {
+      marginLeft: 40,
+      marginTop: 8,
+      paddingLeft: 8,
+      borderLeftWidth: 2,
+      borderLeftColor: theme.colors.outline,
+    },
+    nestedSubtaskItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 4,
+    },
+    nestedSubtaskText: {
+      flex: 1,
+    },
   });
 
 export default CreateScreen;
