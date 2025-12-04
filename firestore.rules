@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Tasks collection
+    match /tasks/{taskId} {
+      // Allow read/write for all users (for development)
+      // TODO: For production, change to: allow read, write: if request.auth != null;
+      allow read, write: if true;
+    }
+    
+    // Routines collection
+    match /routines/{routineId} {
+      // Allow read/write for all users (for development)
+      // TODO: For production, change to: allow read, write: if request.auth != null;
+      allow read, write: if true;
+    }
+    
+    // Notes collection
+    match /notes/{noteId} {
+      // Allow read/write for all users (for development)
+      // TODO: For production, change to: allow read, write: if request.auth != null;
+      allow read, write: if true;
+    }
+    
+    // Tags collection
+    match /tags/{tagId} {
+      // Allow read/write for all users (for development)
+      // TODO: For production, change to: allow read, write: if request.auth != null;
+      allow read, write: if true;
+    }
+    
+    // Test collection (for connection testing)
+    match /test/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

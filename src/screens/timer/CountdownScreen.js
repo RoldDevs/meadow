@@ -1,0 +1,163 @@
+import React, { useState, useEffect, useRef } from "react";
+import { View, StyleSheet, Dimensions, Vibration } from "react-native";
+import { CountdownCircleTimer } from "react-native-countdown-circle-timer";
+import { Text, Button, Surface, useTheme } from "react-native-paper";
+import { Audio } from "expo-av";
+import { useTimer } from "../../contexts/TimerContext";
+
+const { width } = Dimensions.get("window");
+
+const CountdownScreen = ({ route, navigation }) => {
+  const theme = useTheme();
+  
+  const { focusMinutes, breakMinutes } = route.params;
+  const [key, setKey] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [phase, setPhase] = useState("Work");
+  const { startTimer, stopTimer } = useTimer();
+
+  const soundRef = useRef(null);
+
+  useEffect(() => {
+
+    const loadSound = async () => {
+      const { sound } = await Audio.Sound.createAsync(
+        require("../../../assets/Sound/lol.wav")
+      );
+      soundRef.current = sound;
+    };
+
+    loadSound();
+
+    return () => {
+
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+      }
+    };
+  }, []);
+
+  const playSoundAndVibrate = async () => {
+    try {
+      Vibration.vibrate(500);
+      if (soundRef.current) {
+        await soundRef.current.replayAsync();
+      }
+    } catch (error) {
+      console.warn("Error playing sound:", error);
+    }
+  };
+
+  const handleComplete = async () => {
+    await playSoundAndVibrate();
+
+  if (phase === "Work") {
+    setPhase("Break");
+    startTimer(breakMinutes * 60, "Break");
+    setKey((prev) => prev + 1);
+    return { shouldRepeat: true, newInitialRemainingTime: breakMinutes * 60 };
+  } else {
+    setPhase("Work");
+    startTimer(focusMinutes * 60, "Work");
+    setKey((prev) => prev + 1);
+    return { shouldRepeat: true, newInitialRemainingTime: focusMinutes * 60 };
+  }
+};
+
+  const handleStop = () => {
+    stopTimer();
+    navigation.goBack();
+  };  
+
+  return (
+    <View style={styles.container}>
+      <Text variant="headlineMedium" style={styles.phaseText}>
+        {phase} Time
+      </Text>
+
+      <CountdownCircleTimer
+        key={key}
+        isPlaying={isPlaying}
+        duration={phase === "Work" ? focusMinutes * 60 : breakMinutes * 60}
+        colors={[phase === "Work" ? theme.colors.primary : theme.colors.tertiary]}
+        trailColor="#D3D3D3"
+        strokeWidth={12}
+        size={width * 0.7}
+        onComplete={handleComplete}
+      >
+        {({ remainingTime }) => {
+          const mins = Math.floor(remainingTime / 60);
+          const secs = remainingTime % 60;
+          return (
+            <Text variant="displayMedium" style={styles.timerText}>
+              {`${mins}:${secs < 10 ? "0" : ""}${secs}`}
+            </Text>
+          );
+        }}
+      </CountdownCircleTimer>
+
+      <Surface style={styles.controls} elevation={0}>
+        <Button
+          mode="contained"
+          icon={isPlaying ? "pause" : "play"}
+          onPress={() => setIsPlaying(!isPlaying)}
+          style={styles.controlButton}
+          buttonColor={theme.colors.primary}
+        >
+          {isPlaying ? "Pause" : "Resume"}
+        </Button>
+
+        <Button
+          mode="contained"
+          icon="refresh"
+          onPress={() => setKey((prev) => prev + 1)}
+          style={styles.controlButton}
+          buttonColor={theme.colors.secondary}
+        >
+          Reset
+        </Button>
+
+        <Button
+          mode="contained"
+          icon="close"
+          onPress={() => handleStop()}
+          style={styles.controlButton}
+          buttonColor={theme.colors.tertiary}
+        >
+          Stop
+        </Button>
+      </Surface>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  phaseText: {
+    marginBottom: 20,
+    textAlign: "center",
+  },
+  timerText: {
+    fontWeight: "bold",
+  },
+  controls: {
+    marginTop: 30,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    padding: 10,
+    borderRadius: 16,
+  },
+  controlButton: {
+    marginHorizontal: 8,
+    marginVertical: 6,
+    borderRadius: 25,
+  },
+});
+
+export default CountdownScreen;
