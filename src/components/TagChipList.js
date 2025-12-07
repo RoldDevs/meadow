@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, StyleSheet, FlatList } from "react-native";
+import { View, StyleSheet, ScrollView } from "react-native";
 import { Chip, Button, Text } from "react-native-paper";
 
 const TagChipList = ({
@@ -11,7 +11,8 @@ const TagChipList = ({
   createTagAlwaysVisible, 
   whenTagSelected, 
   mode,
-  clearAllTagsBehavior
+  clearAllTagsBehavior,
+  onCreateTag
 }) => {
   const styles = createStyles();
 
@@ -40,81 +41,127 @@ const TagChipList = ({
     )
   }
 
+  const tagItems = items(tags, mostUsedTags, showTags) || [];
+  
   return(
-    <>
-      {/*
-        //! horizontal and vertical flatlists needs to be separated and rendered like this because it gets icky when you change it on the fly
-      */}
-      {(selectedTags.length > 0 && !showTags && mode != "double") && 
-        <FlatList
-          data={selectedTags}
-          style={styles.chipList}
-          contentContainerStyle={{flexDirection:"row", gap: 8}}
-          showsHorizontalScrollIndicator={false}
-          horizontal
-          keyExtractor={(item, index) => index.toString()}
-          renderItem={({ item: tag, index }) => renderTagChip(tag, index)}
-          ListEmptyComponent={()=>(
-            <Text style={styles.emptyTaskText}> You have no tags yet. </Text>
-          )}
-        />
-      }
-      {(showTags || mostUsedTags) && 
-        <FlatList
-          data={items(tags, mostUsedTags, showTags)}
-          numColumns={3}
-          style={styles.chipList}
-          contentContainerStyle={styles.chipListContainer}
+    <View style={styles.container}>
+      {/* Selected tags - horizontal scrollable list (only when tags are hidden) */}
+      {selectedTags.length > 0 && !showTags && mode !== "double" && (
+        <View style={styles.selectedTagsContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.horizontalChipContainer}
+          >
+            {selectedTags.map((tag, index) => (
+              <View key={`selected-${tag}-${index}`} style={styles.chipMargin}>
+                {renderTagChip(tag, index)}
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+      
+      {/* All tags - grid layout using flexWrap (only when showTags is true) */}
+      {showTags && (
+        <ScrollView 
+          style={styles.chipListScrollView}
           showsVerticalScrollIndicator={false}
-          keyExtractor={(item, index) => index.toString()}
-          renderItem={({ item: tag, index }) => renderTagChip(tag, index)}
-          ListEmptyComponent={()=>(
-            <Text style={styles.emptyTaskText}> You have no tags yet. </Text>
-          )}
-        />
-      }
+        >
+          <View style={styles.chipListContainer}>
+            {tagItems.length > 0 ? (
+              tagItems.map((tag, index) => (
+                <View key={`tag-${tag}-${index}`} style={styles.chipWrapper}>
+                  {renderTagChip(tag, index)}
+                </View>
+              ))
+            ) : (
+              <Text style={styles.emptyTaskText}>You have no tags yet.</Text>
+            )}
+          </View>
+        </ScrollView>
+      )}
+      
+      {/* Control buttons */}
       <View style={styles.horizontalContainer}>
-        <Button mode="text" icon={showTags ? "chevron-up" : "chevron-down"} onPress={toggleChipList}>
+        <Button 
+          mode="text" 
+          icon={showTags ? "chevron-up" : "chevron-down"} 
+          onPress={toggleChipList}
+          compact
+        >
           {showTags ? "Hide tags" : "Show tags"}
         </Button>
-        { (clearAllTagsBehavior && selectedTags.length > 0) && 
-          <Button mode="text" icon="close" onPress={() => clearAllTagsBehavior()}>
-            {"Clear all selected tags"}
+        {clearAllTagsBehavior && selectedTags.length > 0 && (
+          <Button 
+            mode="text" 
+            icon="close" 
+            onPress={() => clearAllTagsBehavior()}
+            compact
+          >
+            Clear all
           </Button>
-        }
-        { (showTags || createTagAlwaysVisible) && 
-          <Button mode="text" icon="plus" onPress={()=>{}} style={styles.buttons}>
-            Create a new tag
+        )}
+        {(showTags || createTagAlwaysVisible) && (
+          <Button 
+            mode="text" 
+            icon="plus" 
+            onPress={onCreateTag || (() => {})} 
+            compact
+          >
+            Create tag
           </Button>
-        }
+        )}
       </View>
-      
-    </>
+    </View>
   );
 };
 
 const createStyles = () => 
   StyleSheet.create({
-    chipList:{
-      flexGrow: 0,
-      flexShrink: 0,
-      maxHeight: 180,
-      width:"100%",
+    container: {
+      width: "100%",
+    },
+    selectedTagsContainer: {
+      marginBottom: 8,
+      maxHeight: 50,
+    },
+    chipListScrollView: {
+      maxHeight: 200,
+      marginBottom: 8,
     },
     chipListContainer:{
-      flexDirection: "column",
-      gap: 8
+      flexDirection: "row",
+      flexWrap: "wrap",
+    },
+    horizontalChipContainer:{
+      flexDirection: "row",
+      alignItems: "center",
+      paddingRight: 8,
+    },
+    chipWrapper:{
+      width: "33%",
+      padding: 4,
+    },
+    chipMargin: {
+      marginRight: 8,
     },
     tagChips:{
-      marginLeft:2,
-      marginRight:2,
-    },
-    buttons:{
-      alignSelf:"flex-start"
+      margin: 0,
     },
     horizontalContainer:{
       flexDirection:"row",
-      flexWrap: "wrap"
+      flexWrap: "wrap",
+      alignItems: "center",
+      marginTop: 4,
+      marginBottom: 4,
+      gap: 4,
+    },
+    emptyTaskText: {
+      textAlign: 'center',
+      padding: 16,
+      opacity: 0.6,
+      width: "100%",
     }
   });
 

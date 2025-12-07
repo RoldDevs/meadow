@@ -102,18 +102,23 @@ const StackNavigation = () => {
         <Stack.Screen
           name="CreateRoutine"
           component={CreateRoutinePage}
+          options={{ headerShown: false }}
         />
         {/* Add Note Page */}
         <Stack.Screen
           name="Add"
           component={AddNotePage}
-          options={{ headerTitle: "Add Smart Note" }}
+          options={{ headerShown: false }}
         />
         {/* Countdown Screen */}
         <Stack.Screen
           name="Countdown"
           component={CountdownScreen}
-          options={{ headerTitle: "Pomodoro" }}  // Added header title
+          options={{ 
+            headerTitle: "Pomodoro",
+            headerTitleStyle: { color: '#FFFFFF' },
+            headerTintColor: '#FFFFFF'
+          }}
         />
         
       </Stack.Navigator>

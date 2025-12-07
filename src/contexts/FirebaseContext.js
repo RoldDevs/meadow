@@ -17,23 +17,42 @@ export const FirebaseProvider = ({ children }) => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Test Firebase connection
+    // Test Firebase connection with timeout
     const testConnection = async () => {
+      // Mark as initialized immediately so app can run in offline mode
+      setIsInitialized(true);
+      
+      // Test connection in background (non-blocking)
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Connection timeout')), 5000)
+      );
+      
       try {
-        // Try to access Firestore to verify connection
+        // Try to access Firestore to verify connection with timeout
         const testRef = collection(db, 'test');
-        await getDocs(testRef);
-        setIsInitialized(true);
+        await Promise.race([
+          getDocs(testRef),
+          timeoutPromise
+        ]);
+        console.log('Firebase connection successful');
         setError(null);
       } catch (err) {
-        console.warn('Firebase connection test failed:', err.message);
-        // Don't set error for missing config - user needs to configure it
-        if (err.message.includes('apiKey') || err.message.includes('projectId')) {
+        // Connection failed or timed out - app will work in offline mode
+        const errorMessage = err.message || 'Unknown error';
+        
+        if (errorMessage.includes('apiKey') || errorMessage.includes('projectId')) {
           setError('Firebase not configured. Please update src/firebase/config.js with your Firebase credentials.');
+        } else if (errorMessage.includes('timeout') || errorMessage.includes('Could not reach')) {
+          // This is expected when offline - Firestore will work in offline mode
+          console.log('Firebase offline mode - app will work with cached data');
+          setError(null); // Don't show error for offline mode
         } else {
-          setError(err.message);
+          console.warn('Firebase connection test failed:', errorMessage);
+          // Only set error for critical issues, not for offline mode
+          if (!errorMessage.includes('network') && !errorMessage.includes('internet')) {
+            setError(errorMessage);
+          }
         }
-        setIsInitialized(true); // Still mark as initialized so app can run
       }
     };
 

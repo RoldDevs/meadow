@@ -1,18 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import { View, StyleSheet, Alert, ScrollView } from "react-native";
-import {TextInput,Button,Switch,Text,Card, Chip,
-  Provider as PaperProvider,
-  MD3LightTheme as DefaultTheme, useTheme, ActivityIndicator
-} from "react-native-paper";
+import {TextInput,Button,Switch,Text,Card, Chip, useTheme, ActivityIndicator} from "react-native-paper";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { createRoutine } from "../../firebase/services/routinesService";
+import TopAppBar from "../../TopAppBar";
 
 const CreateRoutinePage = ({ route, navigation }) => {
   const theme = useTheme();
-
-  useEffect(()=>{
-    navigation.setParams({ checkButtonBehavior: handleSave})
-  },[handleSave, name, days, startTime, endTime, includeEndTime]);
 
   const [name, setName] = useState("");
   const [startTime, setStartTime] = useState(new Date());
@@ -29,7 +23,7 @@ const CreateRoutinePage = ({ route, navigation }) => {
     );
   };
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!name.trim()) {
       Alert.alert("Error", "Routine name cannot be empty!");
       return;
@@ -57,11 +51,19 @@ const CreateRoutinePage = ({ route, navigation }) => {
     } finally {
       setSaving(false);
     }
-  };
+  }, [name, days, startTime, endTime, includeEndTime, navigation]);
 
   return (
-
-      <ScrollView contentContainerStyle={styles.container}>
+    <>
+      <TopAppBar
+        onBack={() => navigation.goBack()}
+        title="Create Routine"
+        rightButtons={[{icon: "check", action: handleSave, disabled: saving}]}
+      />
+      <ScrollView 
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+      >
         <TextInput
           label="Routine Name"
           value={name}
@@ -145,42 +147,36 @@ const CreateRoutinePage = ({ route, navigation }) => {
           </Card.Content>
         </Card>
 
-        {/* <Button
-          mode="contained"
-          onPress={handleSave}
-          style={styles.saveButton}
-          labelStyle={styles.saveButtonText}
-        >
-          Save Routine
-        </Button> */}
-
       </ScrollView>
-
+    </>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
+    padding: 16,
     flexGrow: 1,
+    gap: 16,
   },
   input: {
-    marginBottom: 16,
+    marginBottom: 0,
   },
   timeButton: {
-    marginBottom: 16,
+    marginBottom: 0,
+    justifyContent: 'flex-start',
   },
   switchRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 0,
+    paddingVertical: 8,
   },
   switchLabel: {
     fontSize: 16,
   },
   card: {
-    marginBottom: 20,
+    marginBottom: 0,
     borderRadius: 12,
     elevation: 2,
   },
@@ -189,19 +185,11 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     justifyContent: "center",
     marginTop: 8,
-    gap: 5,
+    gap: 8,
+    paddingBottom: 8,
   },
-  dayButton: {
-    margin: 4,
-    borderRadius: 20,
-  },
-  saveButton: {
-    marginTop: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  saveButtonText: {
-    fontSize: 16,
+  tagChips: {
+    margin: 2,
   },
 });
 

@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Alert, ScrollView } from 'react-native';
-import { TextInput, Chip, List, Icon, Button, useTheme, ActivityIndicator, Surface } from 'react-native-paper';
-import { Picker } from '@react-native-picker/picker';
-import TagChipList from "../../components/TagChipList"
+import { View, Text, StyleSheet, Alert, ScrollView } from 'react-native';
+import { TextInput, Button, useTheme, ActivityIndicator, Surface, Dialog, Portal } from 'react-native-paper';
+import TagChipList from "../../components/TagChipList";
 import { createNote } from "../../firebase/services/notesService";
-import { useNavigation } from '@react-navigation/native';
+import { createTag } from "../../firebase/services/tasksService";
 import TopAppBar from "../../TopAppBar";
 import {
   summarizeNote,
@@ -33,6 +32,9 @@ const AddNoteScreen = ({ navigation, route }) => {
   const [tags, setTags] = useState(dummy_tags);
   const [selectedTags, setSelectedTags] = useState([]);
   const [tagsVisible, setTagsVisible] = useState(false);
+  const [createTagDialogVisible, setCreateTagDialogVisible] = useState(false);
+  const [newTagLabel, setNewTagLabel] = useState('');
+  const [creatingTag, setCreatingTag] = useState(false);
 
   const handleTagSelection = (tag) => {
     setSelectedTags((prevSelectedTags) => 
@@ -40,6 +42,63 @@ const AddNoteScreen = ({ navigation, route }) => {
         ? prevSelectedTags.filter((item) => item !== tag)
         : [...prevSelectedTags, tag]
     );
+  };
+
+  // Function to generate a random color for new tags
+  const generateRandomColor = () => {
+    const colors = [
+      "#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#98D8C8", 
+      "#F7DC6F", "#BB8FCE", "#85C1E2", "#F8B739", "#52BE80", 
+      "#EC7063", "#5DADE2", "#48C9B0", "#F4D03F", "#EB984E"
+    ];
+    return colors[Math.floor(Math.random() * colors.length)];
+  };
+
+  // Handle opening the create tag dialog
+  const handleOpenCreateTagDialog = () => {
+    setCreateTagDialogVisible(true);
+  };
+
+  // Handle closing the create tag dialog
+  const handleCloseCreateTagDialog = () => {
+    setCreateTagDialogVisible(false);
+    setNewTagLabel('');
+  };
+
+  // Handle creating a new tag
+  const handleCreateTag = async () => {
+    if (!newTagLabel.trim()) {
+      Alert.alert("Error", "Please enter a tag name");
+      return;
+    }
+
+    // Check if tag already exists
+    if (tags.includes(newTagLabel.trim())) {
+      Alert.alert("Error", "This tag already exists");
+      return;
+    }
+
+    setCreatingTag(true);
+    try {
+      const newTag = {
+        label: newTagLabel.trim(),
+        color: generateRandomColor(),
+      };
+
+      // Save to Firestore
+      await createTag(newTag);
+
+      // Update local state
+      setTags(prevTags => [...prevTags, newTagLabel.trim()]);
+      
+      Alert.alert("Success", "Tag created successfully!");
+      handleCloseCreateTagDialog();
+    } catch (error) {
+      console.error('Error creating tag:', error);
+      Alert.alert("Error", "Failed to create tag. Please try again.");
+    } finally {
+      setCreatingTag(false);
+    }
   };
 
   // AI Action Handler
@@ -116,220 +175,283 @@ const AddNoteScreen = ({ navigation, route }) => {
         title="Add Smart Note"
         rightButtons={[{icon: "check", action: handleSave, disabled: saving}]}
       />
-      <View style={styles.container}>
-        <TextInput
-          mode="outlined"
-          label="Note Title"
-          placeholder="Type something..."
-          outlineColor="transparent"
-          value={title}
-          onChangeText={setTitle}
-        />
-      <Text variant="labelMedium" style={{color: theme.colors.onBackground, marginLeft:  15, marginTop: 10}}>
-        Tags
-      </Text>
-      <TagChipList
-        tags={tags}
-        selectedTags={selectedTags}
-        mode="single"
-        showTags={tagsVisible}
-        setShowTags={setTagsVisible}
-        whenTagSelected={handleTagSelection}
-      />
-      <Text variant="labelMedium" style={{color: theme.colors.onBackground, marginLeft: 15, marginTop: 10}}>
-        Note Content
-      </Text>
-      
-      {/* AI Actions Section */}
-      {text.trim().length > 0 && (
-        <Surface style={styles.aiActionsContainer} elevation={1}>
-          <Text variant="labelLarge" style={{marginBottom: 8, fontWeight: 'bold'}}>
-            AI Actions
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.aiButtonsScroll}>
-            <View style={styles.aiButtonsContainer}>
-              <Button
-                mode="outlined"
-                compact
-                onPress={() => handleAiAction(summarizeNote, "Summarize")}
-                disabled={aiProcessing}
-                style={styles.aiButton}
-              >
-                Summarize this
-              </Button>
-              <Button
-                mode="outlined"
-                compact
-                onPress={() => handleAiAction(createShortSummary, "Create Short Summary")}
-                disabled={aiProcessing}
-                style={styles.aiButton}
-              >
-                Short summary
-              </Button>
-              <Button
-                mode="outlined"
-                compact
-                onPress={() => handleAiAction(generateBulletPoints, "Generate Bullet Points")}
-                disabled={aiProcessing}
-                style={styles.aiButton}
-              >
-                Bullet points
-              </Button>
-              <Button
-                mode="outlined"
-                compact
-                onPress={() => handleAiAction(extractKeyTakeaways, "Extract Key Takeaways")}
-                disabled={aiProcessing}
-                style={styles.aiButton}
-              >
-                Key takeaways
-              </Button>
-              <Button
-                mode="outlined"
-                compact
-                onPress={() => handleAiAction(expandNote, "Expand")}
-                disabled={aiProcessing}
-                style={styles.aiButton}
-              >
-                Make this longer
-              </Button>
-              <Button
-                mode="outlined"
-                compact
-                onPress={() => handleAiAction(makeNoteCasual, "Make Casual")}
-                disabled={aiProcessing}
-                style={styles.aiButton}
-              >
-                More casual
-              </Button>
-              <Button
-                mode="outlined"
-                compact
-                onPress={() => handleAiAction(makeNoteFormal, "Make Formal")}
-                disabled={aiProcessing}
-                style={styles.aiButton}
-              >
-                More formal
-              </Button>
-              <Button
-                mode="outlined"
-                compact
-                onPress={() => handleAiAction(makeNoteProfessional, "Make Professional")}
-                disabled={aiProcessing}
-                style={styles.aiButton}
-              >
-                More professional
-              </Button>
-              <Button
-                mode="outlined"
-                compact
-                onPress={() => handleAiAction(fixGrammar, "Fix Grammar")}
-                disabled={aiProcessing}
-                style={styles.aiButton}
-              >
-                Fix my grammar
-              </Button>
-              <Button
-                mode="outlined"
-                compact
-                onPress={() => handleAiAction(reorganizeNote, "Reorganize")}
-                disabled={aiProcessing}
-                style={styles.aiButton}
-              >
-                Reorganize flow
-              </Button>
-              {lastAiAction && (
-                <Button
-                  mode="contained-tonal"
-                  compact
-                  onPress={handleRetry}
-                  disabled={aiProcessing}
-                  style={styles.aiButton}
-                  icon="refresh"
-                >
-                  Retry
-                </Button>
-              )}
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.container}>
+          {/* Title Section */}
+          <View style={styles.section}>
+            <Text variant="labelLarge" style={styles.sectionLabel}>
+              Title
+            </Text>
+            <TextInput
+              mode="outlined"
+              label="Note Title"
+              placeholder="Enter a title for your note..."
+              value={title}
+              onChangeText={setTitle}
+              style={styles.titleInput}
+            />
+          </View>
+
+          {/* Tags Section */}
+          <View style={styles.section}>
+            <Text variant="labelLarge" style={styles.sectionLabel}>
+              Tags
+            </Text>
+            <View style={styles.tagsWrapper}>
+              <TagChipList
+                tags={tags}
+                selectedTags={selectedTags}
+                mode="single"
+                showTags={tagsVisible}
+                setShowTags={setTagsVisible}
+                whenTagSelected={handleTagSelection}
+                onCreateTag={handleOpenCreateTagDialog}
+              />
             </View>
-          </ScrollView>
-          {aiProcessing && (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" />
-              <Text variant="bodySmall" style={{marginLeft: 8}}>Processing...</Text>
+          </View>
+
+          {/* Note Content Section - Separate section after tags */}
+          <View style={styles.section}>
+            <Text variant="labelLarge" style={styles.sectionLabel}>
+              Note Content
+            </Text>
+            <TextInput
+              multiline
+              value={text}
+              onChangeText={setText}
+              placeholder="Start typing your note here..."
+              mode="outlined"
+              style={styles.contentInput}
+              editable={!aiProcessing}
+              numberOfLines={8}
+            />
+          </View>
+
+          {/* AI Actions Section */}
+          {text.trim().length > 0 && (
+            <View style={styles.section}>
+              <Text variant="labelLarge" style={styles.sectionLabel}>
+                AI Actions
+              </Text>
+              <Surface style={styles.aiActionsContainer} elevation={2}>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false} 
+                  contentContainerStyle={styles.aiButtonsScrollContent}
+                >
+                  <View style={styles.aiButtonsContainer}>
+                    <Button
+                      mode="outlined"
+                      compact
+                      onPress={() => handleAiAction(summarizeNote, "Summarize")}
+                      disabled={aiProcessing}
+                      style={styles.aiButton}
+                    >
+                      Summarize
+                    </Button>
+                    <Button
+                      mode="outlined"
+                      compact
+                      onPress={() => handleAiAction(createShortSummary, "Create Short Summary")}
+                      disabled={aiProcessing}
+                      style={styles.aiButton}
+                    >
+                      Short summary
+                    </Button>
+                    <Button
+                      mode="outlined"
+                      compact
+                      onPress={() => handleAiAction(generateBulletPoints, "Generate Bullet Points")}
+                      disabled={aiProcessing}
+                      style={styles.aiButton}
+                    >
+                      Bullet points
+                    </Button>
+                    <Button
+                      mode="outlined"
+                      compact
+                      onPress={() => handleAiAction(extractKeyTakeaways, "Extract Key Takeaways")}
+                      disabled={aiProcessing}
+                      style={styles.aiButton}
+                    >
+                      Key takeaways
+                    </Button>
+                    <Button
+                      mode="outlined"
+                      compact
+                      onPress={() => handleAiAction(expandNote, "Expand")}
+                      disabled={aiProcessing}
+                      style={styles.aiButton}
+                    >
+                      Expand
+                    </Button>
+                    <Button
+                      mode="outlined"
+                      compact
+                      onPress={() => handleAiAction(makeNoteCasual, "Make Casual")}
+                      disabled={aiProcessing}
+                      style={styles.aiButton}
+                    >
+                      Casual
+                    </Button>
+                    <Button
+                      mode="outlined"
+                      compact
+                      onPress={() => handleAiAction(makeNoteFormal, "Make Formal")}
+                      disabled={aiProcessing}
+                      style={styles.aiButton}
+                    >
+                      Formal
+                    </Button>
+                    <Button
+                      mode="outlined"
+                      compact
+                      onPress={() => handleAiAction(makeNoteProfessional, "Make Professional")}
+                      disabled={aiProcessing}
+                      style={styles.aiButton}
+                    >
+                      Professional
+                    </Button>
+                    <Button
+                      mode="outlined"
+                      compact
+                      onPress={() => handleAiAction(fixGrammar, "Fix Grammar")}
+                      disabled={aiProcessing}
+                      style={styles.aiButton}
+                    >
+                      Fix grammar
+                    </Button>
+                    <Button
+                      mode="outlined"
+                      compact
+                      onPress={() => handleAiAction(reorganizeNote, "Reorganize")}
+                      disabled={aiProcessing}
+                      style={styles.aiButton}
+                    >
+                      Reorganize
+                    </Button>
+                    {lastAiAction && (
+                      <Button
+                        mode="contained-tonal"
+                        compact
+                        onPress={handleRetry}
+                        disabled={aiProcessing}
+                        style={styles.aiButton}
+                        icon="refresh"
+                      >
+                        Retry
+                      </Button>
+                    )}
+                  </View>
+                </ScrollView>
+                {aiProcessing && (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" />
+                    <Text variant="bodySmall" style={styles.loadingText}>
+                      Processing...
+                    </Text>
+                  </View>
+                )}
+              </Surface>
             </View>
           )}
-        </Surface>
-      )}
+        </View>
+      </ScrollView>
 
-      <TextInput
-        multiline
-        value={text}
-        onChangeText={setText}
-        placeholder="Enter note here..."
-        mode="outlined"
-        outlineColor="transparent"
-        style={styles.input}
-        editable={!aiProcessing}
-      />
-      </View>
+      {/* Create Tag Dialog */}
+      <Portal>
+        <Dialog visible={createTagDialogVisible} onDismiss={handleCloseCreateTagDialog}>
+          <Dialog.Title>Create New Tag</Dialog.Title>
+          <Dialog.Content>
+            <TextInput
+              mode="outlined"
+              label="Tag Name"
+              placeholder="Enter tag name..."
+              value={newTagLabel}
+              onChangeText={setNewTagLabel}
+              autoFocus
+            />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={handleCloseCreateTagDialog} disabled={creatingTag}>
+              Cancel
+            </Button>
+            <Button 
+              onPress={handleCreateTag} 
+              disabled={creatingTag || !newTagLabel.trim()}
+              loading={creatingTag}
+            >
+              Create
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
     </>
   );
 };
 
 const styles = StyleSheet.create({
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 24,
+  },
   container: {
-    flex: 1,
-    padding: 20,
-    paddingTop: 0,
-    gap: 8, 
+    padding: 16,
+    paddingTop: 8,
   },
-  categoryChip: {
-    alignSelf: 'flex-start',
+  section: {
+    marginBottom: 24,
   },
-  categoryContainer: {
-    flexDirection: "row", // make chips align horizontally
-    flexWrap: "wrap",     // allow them to wrap to next line if needed
-    gap: 8,
+  sectionLabel: {
+    marginBottom: 12,
+    marginLeft: 4,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
-  actionsContainer: {
-    flexDirection: 'row',   // Place children side by side
-    justifyContent: 'space-between',  // Optional: spread them out
-    alignItems: 'center',
-    marginTop: 10,
+  titleInput: {
+    marginBottom: 0,
   },
-  actionButton: {
-    flex: 1, // Optional: make both buttons take equal space
-    borderRadius: 0,
-    alignItems: 'flex-start'
+  tagsWrapper: {
+    width: '100%',
   },
-  input: {
+  contentInput: {
     textAlignVertical: 'top',
-    paddingVertical: 5,
-    overflow: 'hidden',
     minHeight: 200,
-    flex: 1,
+    maxHeight: 400,
+    paddingVertical: 8,
   },
   aiActionsContainer: {
-    padding: 12,
-    marginBottom: 8,
-    borderRadius: 8,
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 8,
   },
-  aiButtonsScroll: {
-    maxHeight: 120,
+  aiButtonsScrollContent: {
+    paddingVertical: 4,
   },
   aiButtonsContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
+    paddingRight: 8,
   },
   aiButton: {
-    marginRight: 4,
-    marginBottom: 4,
+    marginRight: 0,
   },
   loadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
+    justifyContent: 'center',
+    marginTop: 12,
+    paddingTop: 8,
+  },
+  loadingText: {
+    marginLeft: 8,
   },
 });
 

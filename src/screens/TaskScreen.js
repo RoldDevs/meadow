@@ -145,9 +145,17 @@ const TaskScreen = ({ navigation }) => {
 
   // Calculation for the progress bar renderer
   const calculateProgress = useCallback((subtasks) => {
+    if (!subtasks || subtasks.length === 0) {
+      return 0;
+    }
     const completed = getSubtaskCompletedCount(subtasks);
-    return subtasks.length ? completed / subtasks.length : 0;
-  });
+    const progress = completed / subtasks.length;
+    // Clamp between 0 and 1 to ensure valid progress value
+    // Use Math.round to avoid floating point precision issues when converting to native
+    const clampedProgress = Math.max(0, Math.min(1, progress));
+    // Round to 6 decimal places to avoid precision loss during native conversion
+    return Math.round(clampedProgress * 1000000) / 1000000;
+  }, []);
 
   const enableSelectMode = (taskID) => {
     console.log("The id of the selected task is " + taskID);

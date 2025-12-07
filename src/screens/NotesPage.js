@@ -1,15 +1,11 @@
-import React, { useState, useLayoutEffect, useEffect } from "react";
-import { View, FlatList, StyleSheet, Modal, Alert, ScrollView } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, FlatList, StyleSheet } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import {
-  Appbar,
   FAB,
   Card,
   Text,
-  Button,
   Chip,
-  Portal,
-  Dialog,
   ActivityIndicator,
 } from "react-native-paper";
 import TagChipList from "../components/TagChipList"
@@ -114,38 +110,46 @@ const SmartNotesScreen = () => {
         ]}
       />
       <View style={styles.container}>
-        <TagChipList
-          tags={tags}
-          selectedTags={selectedTags}
-          mode="single"
-          showTags={tagsVisible}
-          setShowTags={setTagsVisible}
-          whenTagSelected={handleTagSelection}
-        />
-
-      {loading ? (
-        <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 100}}>
-          <ActivityIndicator size="large" />
-          <Text style={{marginTop: 10}}>Loading notes...</Text>
+        {/* Tags Section - Fixed at top */}
+        <View style={styles.tagsSection}>
+          <TagChipList
+            tags={tags}
+            selectedTags={selectedTags}
+            mode="single"
+            showTags={tagsVisible}
+            setShowTags={setTagsVisible}
+            whenTagSelected={handleTagSelection}
+          />
         </View>
-      ) : (
-        <FlatList
-          data={filteredNotes}
-          renderItem={renderItem}
-          keyExtractor={(item) => item.id}
-          ListEmptyComponent={() => (
-            <Text style={{textAlign: 'center', marginTop: 40, fontSize: 16}}>
-              No notes yet. Create your first note!
-            </Text>
-          )}
-        />
-      )}
 
-      <FAB
-        icon="plus"
-        style={styles.fab}
-        onPress={navigateToAddNote}
-      />
+        {/* Notes List - Scrollable */}
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" />
+            <Text style={styles.loadingText}>Loading notes...</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredNotes}
+            renderItem={renderItem}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={() => (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>
+                  No notes yet. Create your first note!
+                </Text>
+              </View>
+            )}
+            showsVerticalScrollIndicator={true}
+          />
+        )}
+
+        <FAB
+          icon="plus"
+          style={styles.fab}
+          onPress={navigateToAddNote}
+        />
       </View>
     </>
   );
@@ -154,11 +158,42 @@ const SmartNotesScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
-    gap: 12,
+    backgroundColor: 'transparent',
   },
-  scrollContainer: {
+  tagsSection: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
+    backgroundColor: 'transparent',
+  },
+  listContent: {
+    padding: 16,
+    paddingTop: 8,
+    paddingBottom: 80, // Extra padding for FAB
     flexGrow: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  loadingText: {
+    marginTop: 10,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 300,
+    paddingTop: 40,
+    paddingBottom: 40,
+  },
+  emptyText: {
+    textAlign: 'center',
+    fontSize: 16,
+    opacity: 0.7,
+    paddingHorizontal: 20,
   },
   card: {
     marginBottom: 12,

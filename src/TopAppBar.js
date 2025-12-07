@@ -15,7 +15,7 @@ export default function TopAppBar({
           iconColor="#FFFFFF"
         />
       )}
-      <Appbar.Content title={title} titleStyle={{ color: theme.colors.onSurface }} />
+      <Appbar.Content title={title} titleStyle={{ color: '#FFFFFF' }} />
       {(Array.isArray(rightButtons) && rightButtons.length > 0) && rightButtons.map((item,index) => (
         <Appbar.Action
           key={index}

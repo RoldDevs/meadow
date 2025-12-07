@@ -17,10 +17,20 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with persistence enabled (works offline)
-const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true, // For better compatibility with React Native
-});
+// Initialize Firestore with optimized settings for React Native
+let db;
+try {
+  db = initializeFirestore(app, {
+    experimentalForceLongPolling: true, // Required for React Native - uses HTTP long polling instead of WebSocket
+    ignoreUndefinedProperties: true, // Ignore undefined properties to prevent errors
+  });
+  
+  console.log('Firestore initialized successfully');
+} catch (error) {
+  console.error('Error initializing Firestore:', error);
+  // Fallback to regular getFirestore if initializeFirestore fails
+  db = getFirestore(app);
+}
 
 // Initialize Auth (if you need authentication later)
 const auth = getAuth(app);
