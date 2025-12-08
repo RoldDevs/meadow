@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, FlatList, StyleSheet, Alert, BackHandler } from "react-native";
+import { View, FlatList, StyleSheet, Alert, BackHandler, Pressable } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import {
   FAB,
@@ -10,6 +10,7 @@ import {
   Checkbox,
   Searchbar,
   useTheme,
+  Menu,
 } from "react-native-paper";
 import TagChipList from "../components/TagChipList"
 import { getAllNotes, subscribeToNotes, deleteNote } from "../firebase/services/notesService";
@@ -34,6 +35,9 @@ const SmartNotesScreen = () => {
   // Search states
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Menu states
+  const [menuVisible, setMenuVisible] = useState(false);
 
   // Load notes from Firebase with real-time updates
   useEffect(() => {
@@ -169,14 +173,7 @@ const SmartNotesScreen = () => {
     const isSelected = selectedNotes.includes(item.id);
     
     return (
-      <Card 
-        style={[
-          styles.card,
-          isSelected && selectModeEnabled && {
-            borderWidth: 2,
-            borderColor: theme.colors.primary
-          }
-        ]}
+      <Pressable
         onLongPress={() => !selectModeEnabled && enableSelectMode(item.id)}
         onPress={() => {
           if (selectModeEnabled) {
@@ -187,6 +184,15 @@ const SmartNotesScreen = () => {
           }
         }}
       >
+        <Card 
+          style={[
+            styles.card,
+            isSelected && selectModeEnabled && {
+              borderWidth: 2,
+              borderColor: theme.colors.primary
+            }
+          ]}
+        >
         <Card.Title 
           title={item.title} 
           subtitle={formatDate(item.date || item.createdAt)}
@@ -211,6 +217,7 @@ const SmartNotesScreen = () => {
           </View>
         </Card.Content>
       </Card>
+      </Pressable>
     );
   };
 
@@ -221,7 +228,7 @@ const SmartNotesScreen = () => {
       ]
     : [
         { icon: "magnify", action: () => setSearchVisible(true) },
-        { icon: "dots-vertical", action: () => {} }
+        { icon: "dots-vertical", action: () => setMenuVisible(true) }
       ];
 
   return (
@@ -238,6 +245,23 @@ const SmartNotesScreen = () => {
           </Text>
         </View>
       )}
+      
+      {/* Options Menu */}
+      <Menu
+        visible={menuVisible}
+        onDismiss={() => setMenuVisible(false)}
+        anchor={{x: 1000, y: 80}}
+      >
+        <Menu.Item
+          onPress={() => {
+            setMenuVisible(false);
+            navigation.navigate("Tags");
+          }}
+          leadingIcon="tag"
+          title="Manage Tags"
+        />
+      </Menu>
+      
       <View style={styles.container}>
         {/* Search Bar */}
         {searchVisible && (

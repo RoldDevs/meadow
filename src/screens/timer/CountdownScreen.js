@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { View, StyleSheet, Dimensions, Vibration } from "react-native";
+import { View, StyleSheet, Dimensions, Vibration, BackHandler } from "react-native";
 import { CountdownCircleTimer } from "react-native-countdown-circle-timer";
 import { Text, Button, Surface, useTheme } from "react-native-paper";
 import { Audio } from "expo-av";
@@ -67,7 +67,23 @@ const CountdownScreen = ({ route, navigation }) => {
   const handleStop = () => {
     stopTimer();
     navigation.goBack();
-  };  
+  };
+
+  // Handle back button - pause timer instead of stopping
+  useEffect(() => {
+    const backAction = () => {
+      setIsPlaying(false); // Pause the timer
+      navigation.goBack();
+      return true; // Prevent default behavior
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [navigation]);
 
   return (
     <View style={styles.container}>

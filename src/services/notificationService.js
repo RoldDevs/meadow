@@ -60,15 +60,19 @@ export const scheduleRoutineNotification = async (routine) => {
     }
 
     // Parse start time (format: "HH:MM AM/PM" or "HH:MM")
-    const [time, period] = routine.startTime.split(' ');
-    const [hours, minutes] = time.split(':').map(Number);
+    const timeString = routine.startTime.trim();
+    const parts = timeString.split(' ');
+    const [hours, minutes] = parts[0].split(':').map(Number);
+    const period = parts[1]; // May be undefined for 24-hour format
     
     // Convert to 24-hour format
     let hour24 = hours;
-    if (period === 'PM' && hours !== 12) {
-      hour24 = hours + 12;
-    } else if (period === 'AM' && hours === 12) {
-      hour24 = 0;
+    if (period) {
+      if (period.toUpperCase() === 'PM' && hours !== 12) {
+        hour24 = hours + 12;
+      } else if (period.toUpperCase() === 'AM' && hours === 12) {
+        hour24 = 0;
+      }
     }
 
     // Calculate notification time (5 minutes before)
@@ -94,12 +98,25 @@ export const scheduleRoutineNotification = async (routine) => {
       'Sat': 7
     };
 
+    // Get current time to check if we should schedule for this week or next
+    const now = new Date();
+    const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+    const notifTimeInMinutes = notifHour * 60 + notifMinute;
+
     // Schedule notification for each day the routine is active
     const notificationIds = [];
     
     for (const day of routine.days) {
       const weekday = dayMap[day];
       
+      // Check if this notification should be scheduled for today or next week
+      // Don't trigger immediately if the time has already passed today
+      const shouldSkipToday = (weekday === (currentDay || 7)) && currentTimeInMinutes >= notifTimeInMinutes;
+      
+      // Only schedule if the notification time hasn't passed yet for this week
       const trigger = {
         hour: notifHour,
         minute: notifMinute,
@@ -120,6 +137,7 @@ export const scheduleRoutineNotification = async (routine) => {
       });
 
       notificationIds.push(identifier);
+      console.log(`Scheduled notification for ${day} at ${notifHour}:${notifMinute.toString().padStart(2, '0')}`);
     }
 
     return notificationIds.join(',');

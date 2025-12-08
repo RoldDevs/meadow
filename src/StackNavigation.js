@@ -18,6 +18,7 @@ import CountdownScreen from "./screens/timer/CountdownScreen";
 import AddNotePage from "./screens/notes/AddNoteScreen";
 import CreateRoutinePage from "./screens/routines/CreateRoutinePage";
 import TimeStatsScreen from "./screens/TimeStatsScreen";
+import TagsScreen from "./screens/TagsScreen";
 
 //styles
 //import navigationStyles from "./assets/Styles/navigationStyles";
@@ -125,6 +126,12 @@ const StackNavigation = () => {
         <Stack.Screen
           name="TimeStats"
           component={TimeStatsScreen}
+          options={{ headerShown: false }}
+        />
+        {/* Tags Screen */}
+        <Stack.Screen
+          name="Tags"
+          component={TagsScreen}
           options={{ headerShown: false }}
         />
         

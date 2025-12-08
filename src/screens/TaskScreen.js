@@ -104,7 +104,15 @@ const TaskScreen = ({ navigation }) => {
           : subtask
       );
 
-      await updateTask(taskId, { subtasks: updatedSubtasks });
+      // Check if all subtasks are completed
+      const allSubtasksCompleted = updatedSubtasks.length > 0 && 
+        updatedSubtasks.every(subtask => subtask.completed);
+
+      // Update task with new subtask status and completion status
+      await updateTask(taskId, { 
+        subtasks: updatedSubtasks,
+        completed: allSubtasksCompleted
+      });
       // Real-time subscription will update the state automatically
     } catch (error) {
       console.error('Error updating subtask:', error);
@@ -357,7 +365,14 @@ const TaskScreen = ({ navigation }) => {
         anchor={{x: 1000, y: 80}}
         style={{alignItems:"right"}}
       >
-        <Menu.Item onPress={() => {}} leadingIcon="tag" title="Manage Tags" />
+        <Menu.Item 
+          onPress={() => {
+            closeOptions();
+            navigation.navigate("Tags");
+          }} 
+          leadingIcon="tag" 
+          title="Manage Tags" 
+        />
         <Menu.Item onPress={() => {}} leadingIcon="help-circle-outline" title="How to use this?" />
         <Menu.Item onPress={DELETE_ALL_TASKS} leadingIcon="delete" title="DELETE ALL TASKS (NO CONFIRM)"/>
       </Menu>

@@ -69,6 +69,10 @@ const CreateScreen = ({ route, navigation }) => {
   const [subtasksVisible, setSubtasksVisible] = useState(false);
   const [subtasksLoading, setSubtasksLoading] = useState(false);
   const [generatingNestedFor, setGeneratingNestedFor] = useState(null);
+  
+  // Manual subtask input states
+  const [manualSubtaskDialogVisible, setManualSubtaskDialogVisible] = useState(false);
+  const [manualSubtaskInput, setManualSubtaskInput] = useState('');
 
   const doSubtaskGeneration = async () => {
     if (!fields.taskTitle.trim()) {
@@ -94,6 +98,31 @@ const CreateScreen = ({ route, navigation }) => {
   const cancelSubtaskGeneration = () => {
     setSubtasksVisible(false);
     setSubtasksLoading(false);
+  };
+
+  // Add manual subtask
+  const handleAddManualSubtask = () => {
+    if (!manualSubtaskInput.trim()) {
+      return;
+    }
+
+    const newSubtask = {
+      id: `subtask-${Date.now()}`,
+      title: manualSubtaskInput.trim(),
+      completed: false,
+      subtasks: [],
+    };
+
+    const updatedSubtasks = [...fields.generatedSubtasks, newSubtask];
+    handleFieldChange("generatedSubtasks", updatedSubtasks);
+    
+    setManualSubtaskInput('');
+    setManualSubtaskDialogVisible(false);
+    
+    // Show subtasks if not already visible
+    if (!subtasksVisible) {
+      setSubtasksVisible(true);
+    }
   };
 
   const handleGenerateNestedSubtasks = async (parentSubtaskIndex) => {
@@ -385,15 +414,26 @@ const CreateScreen = ({ route, navigation }) => {
         <Text variant="labelMedium" style={{marginTop: 8}}>
           Subtasks
         </Text>
-        <Button 
-          icon="auto-fix" 
-          mode="contained-tonal" 
-          disabled={!fields.taskTitle.trim() || subtasksLoading} 
-          onPress={doSubtaskGeneration}
-          loading={subtasksLoading}
-        >
-          {fields.generatedSubtasks.length === 0 ? "Generate Subtasks" : "Re-generate Subtasks"}
-        </Button>
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+          <Button 
+            icon="auto-fix" 
+            mode="contained-tonal" 
+            disabled={!fields.taskTitle.trim() || subtasksLoading} 
+            onPress={doSubtaskGeneration}
+            loading={subtasksLoading}
+            style={{ flex: 1 }}
+          >
+            {fields.generatedSubtasks.length === 0 ? "Generate" : "Re-generate"}
+          </Button>
+          <Button 
+            icon="plus" 
+            mode="outlined" 
+            onPress={() => setManualSubtaskDialogVisible(true)}
+            style={{ flex: 1 }}
+          >
+            Add Manually
+          </Button>
+        </View>
         {subtasksLoading && (
           <Button 
             icon="close" 
@@ -549,6 +589,33 @@ const CreateScreen = ({ route, navigation }) => {
         */}
       </View>
       </ScrollView>
+
+      {/* Manual Subtask Input Dialog */}
+      <Portal>
+        <Dialog visible={manualSubtaskDialogVisible} onDismiss={() => setManualSubtaskDialogVisible(false)}>
+          <Dialog.Title>Add Subtask</Dialog.Title>
+          <Dialog.Content>
+            <TextInput
+              mode="outlined"
+              label="Subtask"
+              placeholder="Enter subtask name..."
+              value={manualSubtaskInput}
+              onChangeText={setManualSubtaskInput}
+              autoFocus
+              onSubmitEditing={handleAddManualSubtask}
+            />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setManualSubtaskDialogVisible(false)}>Cancel</Button>
+            <Button 
+              onPress={handleAddManualSubtask}
+              disabled={!manualSubtaskInput.trim()}
+            >
+              Add
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
     </>
   );
 };
