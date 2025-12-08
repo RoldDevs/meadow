@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { BackHandler, StyleSheet, View, FlatList, Alert} from "react-native";
-import { Text, Card, Avatar, IconButton, ProgressBar, Checkbox, Button, FAB, Chip, SegmentedButtons, Surface, Menu, ActivityIndicator } from "react-native-paper";
+import { Text, Card, Avatar, IconButton, ProgressBar, Checkbox, Button, FAB, Chip, SegmentedButtons, Surface, Menu, ActivityIndicator, Searchbar } from "react-native-paper";
 import { useTheme } from "react-native-paper";
 import { getAllTasks, deleteTask, subscribeToTasks, updateTask } from "../firebase/services/tasksService";
 
@@ -17,16 +17,16 @@ const TaskScreen = ({ navigation }) => {
   const styles = createStyles(theme);
 
   const [selectModeEnabled, setSelectModeEnabled] = useState(false);
-  const [selectedTasks, setSelectedTasks] = []; //this is for the select mode (like, for deleting tasks, and stuff)
+  const [selectedTasks, setSelectedTasks] = useState([]); //this is for the select mode (like, for deleting tasks, and stuff)
 
   const rightButtons = (
     selectModeEnabled
     ? [
-        {icon:"delete"},
+        {icon:"delete", action: () => deleteSelectedTasks()},
         {icon:"close", action: () => disableSelectMode()}
       ]
     : [
-        {icon:"magnify"},
+        {icon:"magnify", action: () => setSearchVisible(true)},
         {icon:"dots-vertical", action: () => openOptions()}
       ]
   );
@@ -34,7 +34,11 @@ const TaskScreen = ({ navigation }) => {
   // headerMenu (menu when the three-dots is pressed)
   const [headerMenuVisible, setHeaderMenuVisible] = useState(false);
   const openOptions = () => setHeaderMenuVisible(true);
-  const closeOptions = () => setHeaderMenuVisible(false); 
+  const closeOptions = () => setHeaderMenuVisible(false);
+  
+  // Search state
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(''); 
 
   //
   //TASKS
@@ -124,7 +128,15 @@ const TaskScreen = ({ navigation }) => {
     const taskTagsArray = (task.tags || []).map(tag => typeof tag === 'string' ? tag : tag.label || tag);
     const selectedTagsArray = selectedTags.map(tag => typeof tag === 'string' ? tag : tag.label || tag);
     const matchesCategory = !selectedTagsArray.length || selectedTagsArray.every(tag => taskTagsArray.includes(tag));
-    return matchesPriority && matchesCategory;
+    
+    // Search filter
+    const matchesSearch = !searchQuery || 
+      task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (task.subtasks || []).some(subtask => 
+        subtask.title?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    
+    return matchesPriority && matchesCategory && matchesSearch;
   });
 
   const dateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -160,13 +172,50 @@ const TaskScreen = ({ navigation }) => {
   const enableSelectMode = (taskID) => {
     console.log("The id of the selected task is " + taskID);
     setSelectModeEnabled(true);
+    setSelectedTasks([taskID]);
   };
+  
   const disableSelectMode = () => {
     setSelectModeEnabled(false);
+    setSelectedTasks([]);
   }
 
-  const deleteTasks = () => {
+  const toggleTaskSelection = (taskID) => {
+    setSelectedTasks(prev => 
+      prev.includes(taskID)
+        ? prev.filter(id => id !== taskID)
+        : [...prev, taskID]
+    );
+  };
 
+  const deleteSelectedTasks = async () => {
+    if (selectedTasks.length === 0) {
+      Alert.alert("Error", "No tasks selected");
+      return;
+    }
+
+    Alert.alert(
+      "Delete Tasks",
+      `Are you sure you want to delete ${selectedTasks.length} task(s)?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const deletePromises = selectedTasks.map(taskId => deleteTask(taskId));
+              await Promise.all(deletePromises);
+              disableSelectMode();
+              Alert.alert("Success", `${selectedTasks.length} task(s) deleted successfully`);
+            } catch (error) {
+              console.error('Error deleting tasks:', error);
+              Alert.alert('Error', 'Failed to delete tasks');
+            }
+          }
+        }
+      ]
+    );
   }
 
   const DELETE_ALL_TASKS = async () => {
@@ -204,17 +253,41 @@ const TaskScreen = ({ navigation }) => {
     const subtasks = item.subtasks || [];
     const finishedTasks = getSubtaskCompletedCount(subtasks);
     const tasksLength = subtasks.length;
+    const isSelected = selectedTasks.includes(item.id);
+    
     return (
       <Card 
         onLongPress={() => !selectModeEnabled && enableSelectMode(item.id)}
+        onPress={() => {
+          if (selectModeEnabled) {
+            toggleTaskSelection(item.id);
+          } else {
+            // Navigate to task details or edit screen
+            navigation.navigate("Create", { task: item, isEdit: true });
+          }
+        }}
+        style={[
+          isSelected && selectModeEnabled && { 
+            borderWidth: 2, 
+            borderColor: theme.colors.primary 
+          }
+        ]}
       >
         <Card.Content style={styles.taskCard}>
-          <Text variant="titleLarge">{item.title}</Text>
-          <Text variant="bodyMedium">
-            {
-              formatDate(item.date)
-            }
-          </Text>
+          <View style={styles.taskHeader}>
+            {selectModeEnabled && (
+              <Checkbox
+                status={isSelected ? 'checked' : 'unchecked'}
+                onPress={() => toggleTaskSelection(item.id)}
+              />
+            )}
+            <View style={{ flex: 1 }}>
+              <Text variant="titleLarge">{item.title}</Text>
+              <Text variant="bodyMedium">
+                {formatDate(item.date)}
+              </Text>
+            </View>
+          </View>
           { tasksLength > 0 && (
             <View style={styles.progressGroupContainer}>
               <ProgressBar
@@ -239,7 +312,7 @@ const TaskScreen = ({ navigation }) => {
                   compact="true" 
                   key={index}
                   selected={selectedTags.includes(tagValue) || selectedTags.includes(tagLabel)}
-                  onPress={() => handleTagSelection(tagValue)}
+                  onPress={() => !selectModeEnabled && handleTagSelection(tagValue)}
                   showSelectedCheck={false}
                 >
                   {tagLabel}
@@ -289,6 +362,21 @@ const TaskScreen = ({ navigation }) => {
         <Menu.Item onPress={DELETE_ALL_TASKS} leadingIcon="delete" title="DELETE ALL TASKS (NO CONFIRM)"/>
       </Menu>
       <View style={styles.container}>
+        {/* Search Bar */}
+        {searchVisible && (
+          <Searchbar
+            placeholder="Search tasks..."
+            onChangeText={setSearchQuery}
+            value={searchQuery}
+            onIconPress={() => {
+              setSearchVisible(false);
+              setSearchQuery('');
+            }}
+            onClearIconPress={() => setSearchQuery('')}
+            style={styles.searchBar}
+          />
+        )}
+
         {/* DEBUGGING */}
         {false && (
           <Surface style={{backgroundColor: theme.colors.errorContainer, borderRadius: 8, padding: 8, gap:5}}>
@@ -400,6 +488,11 @@ const createStyles = (theme) =>
     taskCard:{
       gap: 4
     },
+    taskHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8
+    },
     chipContainer:{
       flexDirection: "row",
       flexWrap: "wrap",
@@ -410,6 +503,9 @@ const createStyles = (theme) =>
       textAlign:"center",
       fontSize: 18,
       marginTop: 4
+    },
+    searchBar: {
+      marginBottom: 8
     }
   });
 

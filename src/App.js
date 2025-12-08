@@ -1,6 +1,7 @@
-import React, {useState, useEffect, useCallback, useMemo} from 'react';
+import React, {useState, useEffect, useCallback, useMemo, useRef} from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as NavigationBar from 'expo-navigation-bar';
+import { AppState } from 'react-native';
 import { NavigationContainer, DarkTheme as NavigationDarkTheme, DefaultTheme as NavigationDefaultTheme} from '@react-navigation/native';
 import { MD3LightTheme, MD3DarkTheme, PaperProvider, adaptNavigationTheme } from 'react-native-paper';
 
@@ -19,6 +20,7 @@ import { TimerProvider } from "./contexts/TimerContext";
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { FirebaseProvider } from './contexts/FirebaseContext';
 import { seedFirestore } from '../scripts/seedFirestore';
+import { startTimeTracking, endTimeTracking, cleanupOldStats } from './services/timeTrackingService';
 
 //colors, theming, etc.
 import { useColorScheme } from 'react-native';
@@ -64,6 +66,8 @@ export default function App() {
       try {
         // Seed collections with initial data if they're empty
         await seedFirestore();
+        // Clean up old time tracking stats
+        await cleanupOldStats();
       } catch (error) {
         // Silently fail - collections might already exist or will be created on first use
         console.log('Firestore seeding:', error.message || 'Collections already initialized');
@@ -76,6 +80,38 @@ export default function App() {
     }, 1000);
     
     return () => clearTimeout(timer);
+  }, []);
+
+  // Track app usage time
+  const appState = useRef(AppState.currentState);
+  
+  useEffect(() => {
+    // Start tracking when app opens
+    startTimeTracking();
+
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        // App has come to the foreground
+        startTimeTracking();
+      } else if (
+        appState.current === 'active' &&
+        nextAppState.match(/inactive|background/)
+      ) {
+        // App has gone to the background
+        endTimeTracking();
+      }
+
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+      // End tracking when app closes
+      endTimeTracking();
+    };
   }, []);
 
   const toggleTheme = useCallback(() => {

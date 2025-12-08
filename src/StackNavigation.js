@@ -17,6 +17,7 @@ import CreateTask from './screens/tasks/CreateTask';
 import CountdownScreen from "./screens/timer/CountdownScreen";
 import AddNotePage from "./screens/notes/AddNoteScreen";
 import CreateRoutinePage from "./screens/routines/CreateRoutinePage";
+import TimeStatsScreen from "./screens/TimeStatsScreen";
 
 //styles
 //import navigationStyles from "./assets/Styles/navigationStyles";
@@ -119,6 +120,12 @@ const StackNavigation = () => {
             headerTitleStyle: { color: '#FFFFFF' },
             headerTintColor: '#FFFFFF'
           }}
+        />
+        {/* Time Stats Screen */}
+        <Stack.Screen
+          name="TimeStats"
+          component={TimeStatsScreen}
+          options={{ headerShown: false }}
         />
         
       </Stack.Navigator>

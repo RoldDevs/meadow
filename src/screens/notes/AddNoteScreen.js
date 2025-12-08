@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Alert, ScrollView } from 'react-native';
 import { TextInput, Button, useTheme, ActivityIndicator, Surface, Dialog, Portal } from 'react-native-paper';
 import TagChipList from "../../components/TagChipList";
-import { createNote } from "../../firebase/services/notesService";
+import { createNote, updateNote } from "../../firebase/services/notesService";
 import { createTag } from "../../firebase/services/tasksService";
 import TopAppBar from "../../TopAppBar";
 import {
@@ -22,6 +22,8 @@ import {dummy_tags} from "../../../Data/tasks";
 
 const AddNoteScreen = ({ navigation, route }) => {
   const theme = useTheme();
+  const { note, isEdit } = route.params || {};
+  
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
@@ -35,6 +37,15 @@ const AddNoteScreen = ({ navigation, route }) => {
   const [createTagDialogVisible, setCreateTagDialogVisible] = useState(false);
   const [newTagLabel, setNewTagLabel] = useState('');
   const [creatingTag, setCreatingTag] = useState(false);
+
+  // Load note data if editing
+  useEffect(() => {
+    if (isEdit && note) {
+      setTitle(note.title || '');
+      setText(note.content || '');
+      setSelectedTags(note.tag || []);
+    }
+  }, [isEdit, note]);
 
   const handleTagSelection = (tag) => {
     setSelectedTags((prevSelectedTags) => 
@@ -152,16 +163,26 @@ const AddNoteScreen = ({ navigation, route }) => {
 
     setSaving(true);
     try {
-      await createNote({
-        title: title.trim(),
-        content: text.trim(),
-        tag: selectedTags,
-        archived: false,
-        deleted: false,
-      });
+      if (isEdit && note) {
+        // Update existing note
+        await updateNote(note.id, {
+          title: title.trim(),
+          content: text.trim(),
+          tag: selectedTags,
+        });
+      } else {
+        // Create new note
+        await createNote({
+          title: title.trim(),
+          content: text.trim(),
+          tag: selectedTags,
+          archived: false,
+          deleted: false,
+        });
+      }
       navigation.goBack();
     } catch (error) {
-      console.error('Error creating note:', error);
+      console.error('Error saving note:', error);
       Alert.alert("Error", "Failed to save note. Please try again.");
     } finally {
       setSaving(false);
@@ -172,7 +193,7 @@ const AddNoteScreen = ({ navigation, route }) => {
     <>
       <TopAppBar
         onBack={() => navigation.goBack()}
-        title="Add Smart Note"
+        title={isEdit ? "Edit Note" : "Add Smart Note"}
         rightButtons={[{icon: "check", action: handleSave, disabled: saving}]}
       />
       <ScrollView 

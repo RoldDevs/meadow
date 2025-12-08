@@ -1,12 +1,14 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { View, StyleSheet, Alert, ScrollView } from "react-native";
 import {TextInput,Button,Switch,Text,Card, Chip, useTheme, ActivityIndicator} from "react-native-paper";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { createRoutine } from "../../firebase/services/routinesService";
+import { createRoutine, updateRoutine } from "../../firebase/services/routinesService";
+import { scheduleRoutineNotification, cancelRoutineNotification } from "../../services/notificationService";
 import TopAppBar from "../../TopAppBar";
 
 const CreateRoutinePage = ({ route, navigation }) => {
   const theme = useTheme();
+  const { routine, isEdit } = route.params || {};
 
   const [name, setName] = useState("");
   const [startTime, setStartTime] = useState(new Date());
@@ -16,6 +18,30 @@ const CreateRoutinePage = ({ route, navigation }) => {
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Load routine data if editing
+  useEffect(() => {
+    if (isEdit && routine) {
+      setName(routine.name || '');
+      setDays(routine.days || []);
+      setIncludeEndTime(!!routine.endTime);
+      
+      // Parse time strings to Date objects
+      if (routine.startTime) {
+        const [hours, minutes] = routine.startTime.split(':');
+        const startDate = new Date();
+        startDate.setHours(parseInt(hours), parseInt(minutes));
+        setStartTime(startDate);
+      }
+      
+      if (routine.endTime) {
+        const [hours, minutes] = routine.endTime.split(':');
+        const endDate = new Date();
+        endDate.setHours(parseInt(hours), parseInt(minutes));
+        setEndTime(endDate);
+      }
+    }
+  }, [isEdit, routine]);
 
   const toggleDay = (day) => {
     setDays((prev) =>
@@ -35,7 +61,7 @@ const CreateRoutinePage = ({ route, navigation }) => {
 
     setSaving(true);
     try {
-      await createRoutine({
+      const routineData = {
         name: name.trim(),
         startTime: startTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         endTime: includeEndTime
@@ -43,21 +69,49 @@ const CreateRoutinePage = ({ route, navigation }) => {
           : null,
         days,
         enabled: true,
+      };
+
+      let routineId;
+      
+      if (isEdit && routine) {
+        // Cancel old notifications
+        if (routine.notificationIds) {
+          await cancelRoutineNotification(routine.notificationIds);
+        }
+        
+        // Update existing routine
+        await updateRoutine(routine.id, routineData);
+        routineId = routine.id;
+      } else {
+        // Create new routine
+        routineId = await createRoutine(routineData);
+      }
+
+      // Schedule notification (5 minutes before start time)
+      const notificationIds = await scheduleRoutineNotification({
+        ...routineData,
+        id: routineId,
       });
+
+      // Update routine with notification IDs
+      if (notificationIds) {
+        await updateRoutine(routineId, { notificationIds });
+      }
+      
       navigation.goBack();
     } catch (error) {
-      console.error('Error creating routine:', error);
+      console.error('Error saving routine:', error);
       Alert.alert("Error", "Failed to save routine. Please try again.");
     } finally {
       setSaving(false);
     }
-  }, [name, days, startTime, endTime, includeEndTime, navigation]);
+  }, [name, days, startTime, endTime, includeEndTime, navigation, isEdit, routine]);
 
   return (
     <>
       <TopAppBar
         onBack={() => navigation.goBack()}
-        title="Create Routine"
+        title={isEdit ? "Edit Routine" : "Create Routine"}
         rightButtons={[{icon: "check", action: handleSave, disabled: saving}]}
       />
       <ScrollView 

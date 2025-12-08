@@ -3,7 +3,7 @@ import { StyleSheet, View, FlatList, Alert, BackHandler, ScrollView } from "reac
 import { useFocusEffect } from "@react-navigation/native";
 import { Appbar, useTheme, TextInput, Text, Switch, SegmentedButtons, Button, Surface, Chip, ActivityIndicator, Portal, Dialog, Checkbox } from "react-native-paper";
 import { DatePickerInput} from "react-native-paper-dates";
-import { createTask } from '../../firebase/services/tasksService';
+import { createTask, updateTask } from '../../firebase/services/tasksService';
 import { generateSubtasks, generateNestedSubtasks } from '../../services/openRouterService';
 
 import TagChipList from "../../components/TagChipList";
@@ -15,6 +15,7 @@ const CreateScreen = ({ route, navigation }) => {
   const theme = useTheme();
   const styles = createStyles(theme);
 
+  const { task, isEdit } = route.params || {};
   const [saving, setSaving] = useState(false);
 
   //inputs state
@@ -25,6 +26,22 @@ const CreateScreen = ({ route, navigation }) => {
     selectedTags: [],
     generatedSubtasks: [],
   });
+
+  // Load task data if editing
+  useEffect(() => {
+    if (isEdit && task) {
+      setFields({
+        taskTitle: task.title || '',
+        dueDate: task.date instanceof Date ? task.date : new Date(task.date),
+        isUrgent: task.isUrgent || false,
+        selectedTags: task.tags || [],
+        generatedSubtasks: task.subtasks || [],
+      });
+      if (task.subtasks && task.subtasks.length > 0) {
+        setSubtasksVisible(true);
+      }
+    }
+  }, [isEdit, task]);
 
   const handleFieldChange = (field, value) => {
     setFields(prev => ({
@@ -160,13 +177,26 @@ const CreateScreen = ({ route, navigation }) => {
 
     setSaving(true);
     try {
-      await writeToDB(
-        fields.taskTitle, 
-        fields.isUrgent, 
-        fields.dueDate, 
-        fields.selectedTags, 
-        fields.generatedSubtasks
-      );
+      if (isEdit && task) {
+        // Update existing task
+        await updateTaskInDB(
+          task.id,
+          fields.taskTitle, 
+          fields.isUrgent, 
+          fields.dueDate, 
+          fields.selectedTags, 
+          fields.generatedSubtasks
+        );
+      } else {
+        // Create new task
+        await writeToDB(
+          fields.taskTitle, 
+          fields.isUrgent, 
+          fields.dueDate, 
+          fields.selectedTags, 
+          fields.generatedSubtasks
+        );
+      }
       navigation.goBack(); // Go back after saving the task
     } catch (error) {
       console.error('Error saving task:', error);
@@ -188,6 +218,21 @@ const CreateScreen = ({ route, navigation }) => {
       completed: subtask.completed || false,
       subtasks: formatSubtasksForFirestore(subtask.subtasks) // Recursively format nested subtasks
     }));
+  };
+
+  const updateTaskInDB = async (taskId, title, isUrgent, date, tags, subtasks) => {
+    // Convert subtasks to proper format for Firebase (handles nested subtasks recursively)
+    const formattedSubtasks = formatSubtasksForFirestore(subtasks);
+
+    // Update task in Firebase
+    await updateTask(taskId, {
+      title,
+      isUrgent,
+      date,
+      tags,
+      subtasks: formattedSubtasks,
+      completed: false,
+    });
   };
 
   const writeToDB = async (title, isUrgent, date, tags, subtasks) => {
@@ -267,7 +312,7 @@ const CreateScreen = ({ route, navigation }) => {
     <>
       <TopAppBar
         onBack={() => navigation.goBack()}
-        title="Create a task"
+        title={isEdit ? "Edit Task" : "Create a task"}
         rightButtons={ [{icon:"check",action:saveTask, disabled: saving}] }//must be an array of objects with keys icon and action
       />
       <ScrollView 

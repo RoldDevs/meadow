@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
-import {View,FlatList,StyleSheet, ScrollView, Alert} from "react-native";
+import {View,FlatList,StyleSheet, ScrollView, Alert, BackHandler} from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import {Appbar, Button, Text, Surface, Switch, FAB, useTheme, Chip, ActivityIndicator} from "react-native-paper";
-import { getAllRoutines, subscribeToRoutines, updateRoutine } from "../firebase/services/routinesService";
+import {Appbar, Button, Text, Surface, Switch, FAB, useTheme, Chip, ActivityIndicator, Checkbox} from "react-native-paper";
+import { getAllRoutines, subscribeToRoutines, updateRoutine, deleteRoutine } from "../firebase/services/routinesService";
+import { scheduleRoutineNotification, cancelRoutineNotification, requestNotificationPermissions } from "../services/notificationService";
 import TopAppBar from "../TopAppBar";
 
 const RoutinePage = () => {
@@ -12,7 +13,16 @@ const RoutinePage = () => {
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState(null);
   const [showFilters, setShowFilters] = useState(true);
+  
+  // Selection mode states
+  const [selectModeEnabled, setSelectModeEnabled] = useState(false);
+  const [selectedRoutines, setSelectedRoutines] = useState([]);
 
+
+  // Request notification permissions on mount
+  useEffect(() => {
+    requestNotificationPermissions();
+  }, []);
 
   // Load routines from Firebase with real-time updates
   useEffect(() => {
@@ -40,7 +50,26 @@ const RoutinePage = () => {
     try {
       const routine = routines.find(r => r.id === id);
       if (routine) {
-        await updateRoutine(id, { enabled: !routine.enabled });
+        const newEnabledState = !routine.enabled;
+        
+        if (newEnabledState) {
+          // Enabling routine - schedule notification
+          const notificationIds = await scheduleRoutineNotification({
+            ...routine,
+            enabled: true,
+          });
+          await updateRoutine(id, { 
+            enabled: true, 
+            notificationIds: notificationIds || routine.notificationIds 
+          });
+        } else {
+          // Disabling routine - cancel notification
+          if (routine.notificationIds) {
+            await cancelRoutineNotification(routine.notificationIds);
+          }
+          await updateRoutine(id, { enabled: false });
+        }
+        
         // Real-time subscription will update the state automatically
       }
     } catch (error) {
@@ -49,28 +78,156 @@ const RoutinePage = () => {
     }
   };
 
-  const renderRoutineItem = ({ item }) => (
-    <Surface style={styles.card}>
-      <View style={styles.listItem}>
-        <Text style={styles.title}>{item.name}</Text>
-        <Text style={styles.timeText}>
-          {`${item.startTime}${item.endTime ? ` - ${item.endTime}` : ""}`}
-        </Text>
-        <Text style={styles.daysText}>{item.days.join(", ")}</Text>
-        <Switch
-          value={item.enabled}
-          onValueChange={() => toggleRoutine(item.id)}
-        />
-      </View>
-    </Surface>
-  );
+  // Selection mode functions
+  const enableSelectMode = (routineId) => {
+    setSelectModeEnabled(true);
+    setSelectedRoutines([routineId]);
+  };
+
+  const disableSelectMode = () => {
+    setSelectModeEnabled(false);
+    setSelectedRoutines([]);
+  };
+
+  const toggleRoutineSelection = (routineId) => {
+    setSelectedRoutines(prev =>
+      prev.includes(routineId)
+        ? prev.filter(id => id !== routineId)
+        : [...prev, routineId]
+    );
+  };
+
+  const deleteSelectedRoutines = async () => {
+    if (selectedRoutines.length === 0) {
+      Alert.alert("Error", "No routines selected");
+      return;
+    }
+
+    Alert.alert(
+      "Delete Routines",
+      `Are you sure you want to delete ${selectedRoutines.length} routine(s)?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              // Cancel notifications for selected routines
+              const cancelPromises = selectedRoutines.map(routineId => {
+                const routine = routines.find(r => r.id === routineId);
+                if (routine?.notificationIds) {
+                  return cancelRoutineNotification(routine.notificationIds);
+                }
+                return Promise.resolve();
+              });
+              await Promise.all(cancelPromises);
+              
+              // Delete routines
+              const deletePromises = selectedRoutines.map(routineId => deleteRoutine(routineId));
+              await Promise.all(deletePromises);
+              
+              disableSelectMode();
+              Alert.alert("Success", `${selectedRoutines.length} routine(s) deleted successfully`);
+            } catch (error) {
+              console.error('Error deleting routines:', error);
+              Alert.alert('Error', 'Failed to delete routines');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // BackHandler for selection mode
+  useEffect(() => {
+    const backAction = () => {
+      if (selectModeEnabled) {
+        disableSelectMode();
+        return true;
+      }
+      return false;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [selectModeEnabled]);
+
+  const renderRoutineItem = ({ item }) => {
+    const isSelected = selectedRoutines.includes(item.id);
+    
+    return (
+      <Surface 
+        style={[
+          styles.card,
+          isSelected && selectModeEnabled && {
+            borderWidth: 2,
+            borderColor: theme.colors.primary
+          }
+        ]}
+      >
+        <View 
+          style={styles.listItem}
+          onStartShouldSetResponder={() => true}
+          onResponderRelease={() => {
+            if (selectModeEnabled) {
+              toggleRoutineSelection(item.id);
+            } else {
+              // Navigate to edit routine
+              navigation.navigate("CreateRoutine", { routine: item, isEdit: true });
+            }
+          }}
+          onLongPress={() => !selectModeEnabled && enableSelectMode(item.id)}
+        >
+          {selectModeEnabled && (
+            <Checkbox
+              status={isSelected ? 'checked' : 'unchecked'}
+              onPress={() => toggleRoutineSelection(item.id)}
+            />
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>{item.name}</Text>
+            <Text style={styles.timeText}>
+              {`${item.startTime}${item.endTime ? ` - ${item.endTime}` : ""}`}
+            </Text>
+            <Text style={styles.daysText}>{item.days.join(", ")}</Text>
+          </View>
+          {!selectModeEnabled && (
+            <Switch
+              value={item.enabled}
+              onValueChange={() => toggleRoutine(item.id)}
+            />
+          )}
+        </View>
+      </Surface>
+    );
+  };
+
+  const rightButtons = selectModeEnabled
+    ? [
+        { icon: "delete", action: () => deleteSelectedRoutines() },
+        { icon: "close", action: () => disableSelectMode() }
+      ]
+    : [];
 
   return (
     <>
       <TopAppBar
         onBack={() => navigation.goBack()}
         title="Routine"
+        rightButtons={rightButtons}
       />
+      {selectModeEnabled && (
+        <View style={[styles.selectionBanner, { backgroundColor: theme.colors.errorContainer }]}>
+          <Text style={{ color: theme.colors.onErrorContainer, textAlign: "center", margin: 3 }}>
+            {selectedRoutines.length} routine(s) selected
+          </Text>
+        </View>
+      )}
       { showFilters && (
         <View style={styles.filterContainer}>
           <ScrollView
@@ -136,7 +293,9 @@ const RoutinePage = () => {
 };
 
 const styles = StyleSheet.create({
-
+  selectionBanner: {
+    paddingVertical: 4,
+  },
   filterContainer: {
     paddingHorizontal: 12,
     paddingTop: 8,

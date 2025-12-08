@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, FlatList, StyleSheet } from "react-native";
+import { View, FlatList, StyleSheet, Alert, BackHandler } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import {
   FAB,
@@ -7,14 +7,18 @@ import {
   Text,
   Chip,
   ActivityIndicator,
+  Checkbox,
+  Searchbar,
+  useTheme,
 } from "react-native-paper";
 import TagChipList from "../components/TagChipList"
-import { getAllNotes, subscribeToNotes } from "../firebase/services/notesService";
+import { getAllNotes, subscribeToNotes, deleteNote } from "../firebase/services/notesService";
 import { dummy_tags } from "../../Data/tasks";
 import TopAppBar from "../TopAppBar";
 
 const SmartNotesScreen = () => {
   const navigation = useNavigation();
+  const theme = useTheme();
 
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,6 +26,14 @@ const SmartNotesScreen = () => {
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
   const [selectedTags, setSelectedTags] = useState([]);
   const [tagsVisible, setTagsVisible] = useState(false);
+  
+  // Selection mode states
+  const [selectModeEnabled, setSelectModeEnabled] = useState(false);
+  const [selectedNotes, setSelectedNotes] = useState([]);
+  
+  // Search states
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Load notes from Firebase with real-time updates
   useEffect(() => {
@@ -47,15 +59,90 @@ const SmartNotesScreen = () => {
     });
   };
 
+  // Selection mode functions
+  const enableSelectMode = (noteId) => {
+    setSelectModeEnabled(true);
+    setSelectedNotes([noteId]);
+  };
 
-  // Filter Notes by Selected Tags
+  const disableSelectMode = () => {
+    setSelectModeEnabled(false);
+    setSelectedNotes([]);
+  };
+
+  const toggleNoteSelection = (noteId) => {
+    setSelectedNotes(prev =>
+      prev.includes(noteId)
+        ? prev.filter(id => id !== noteId)
+        : [...prev, noteId]
+    );
+  };
+
+  const deleteSelectedNotes = async () => {
+    if (selectedNotes.length === 0) {
+      Alert.alert("Error", "No notes selected");
+      return;
+    }
+
+    Alert.alert(
+      "Delete Notes",
+      `Are you sure you want to delete ${selectedNotes.length} note(s)?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const deletePromises = selectedNotes.map(noteId => deleteNote(noteId));
+              await Promise.all(deletePromises);
+              disableSelectMode();
+              Alert.alert("Success", `${selectedNotes.length} note(s) deleted successfully`);
+            } catch (error) {
+              console.error('Error deleting notes:', error);
+              Alert.alert('Error', 'Failed to delete notes');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // BackHandler for selection mode
+  useEffect(() => {
+    const backAction = () => {
+      if (selectModeEnabled) {
+        disableSelectMode();
+        return true;
+      }
+      return false;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [selectModeEnabled]);
+
+  // Filter Notes by Selected Tags and Search
   const filteredNotes = notes.filter((note) => {
-    if (selectedTags.length === 0) return true;
-    const noteTags = note.tag || [];
-    return noteTags.some((tag) => {
-      const tagValue = typeof tag === 'string' ? tag : tag.label || tag;
-      return selectedTags.includes(tagValue);
-    });
+    // Tag filter
+    const matchesTags = selectedTags.length === 0 || (() => {
+      const noteTags = note.tag || [];
+      return noteTags.some((tag) => {
+        const tagValue = typeof tag === 'string' ? tag : tag.label || tag;
+        return selectedTags.includes(tagValue);
+      });
+    })();
+
+    // Search filter
+    const matchesSearch = !searchQuery ||
+      note.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      note.content?.toLowerCase().includes(searchQuery.toLowerCase());
+
+    return matchesTags && matchesSearch;
   });
 
   const handleTagSelection = (tag) => {
@@ -78,12 +165,40 @@ const SmartNotesScreen = () => {
         day: 'numeric' 
       });
     };
+
+    const isSelected = selectedNotes.includes(item.id);
     
     return (
-      <Card style={styles.card}>
-        <Card.Title title={item.title} subtitle={formatDate(item.date || item.createdAt)} />
+      <Card 
+        style={[
+          styles.card,
+          isSelected && selectModeEnabled && {
+            borderWidth: 2,
+            borderColor: theme.colors.primary
+          }
+        ]}
+        onLongPress={() => !selectModeEnabled && enableSelectMode(item.id)}
+        onPress={() => {
+          if (selectModeEnabled) {
+            toggleNoteSelection(item.id);
+          } else {
+            // Navigate to edit note screen
+            navigation.navigate("Add", { note: item, isEdit: true });
+          }
+        }}
+      >
+        <Card.Title 
+          title={item.title} 
+          subtitle={formatDate(item.date || item.createdAt)}
+          left={selectModeEnabled ? () => (
+            <Checkbox
+              status={isSelected ? 'checked' : 'unchecked'}
+              onPress={() => toggleNoteSelection(item.id)}
+            />
+          ) : undefined}
+        />
         <Card.Content>
-          <Text style={{ marginBottom: 8 }}>{item.content}</Text>
+          <Text numberOfLines={3} style={{ marginBottom: 8 }}>{item.content}</Text>
           <View style={styles.tagContainer}>
             {(item.tag || []).map((tag, idx) => {
               const tagLabel = typeof tag === 'string' ? tag : tag.label || tag;
@@ -99,17 +214,47 @@ const SmartNotesScreen = () => {
     );
   };
 
+  const rightButtons = selectModeEnabled
+    ? [
+        { icon: "delete", action: () => deleteSelectedNotes() },
+        { icon: "close", action: () => disableSelectMode() }
+      ]
+    : [
+        { icon: "magnify", action: () => setSearchVisible(true) },
+        { icon: "dots-vertical", action: () => {} }
+      ];
+
   return (
     <>
       <TopAppBar
         onBack={() => navigation.goBack()}
         title="Smart Notes"
-        rightButtons={[
-          { icon: "magnify", action: () => {} },
-          { icon: "dots-vertical", action: () => {} }
-        ]}
+        rightButtons={rightButtons}
       />
+      {selectModeEnabled && (
+        <View style={[styles.selectionBanner, { backgroundColor: theme.colors.errorContainer }]}>
+          <Text style={{ color: theme.colors.onErrorContainer, textAlign: "center", margin: 3 }}>
+            {selectedNotes.length} note(s) selected
+          </Text>
+        </View>
+      )}
       <View style={styles.container}>
+        {/* Search Bar */}
+        {searchVisible && (
+          <View style={styles.searchContainer}>
+            <Searchbar
+              placeholder="Search notes..."
+              onChangeText={setSearchQuery}
+              value={searchQuery}
+              onIconPress={() => {
+                setSearchVisible(false);
+                setSearchQuery('');
+              }}
+              onClearIconPress={() => setSearchQuery('')}
+            />
+          </View>
+        )}
+
         {/* Tags Section - Fixed at top */}
         <View style={styles.tagsSection}>
           <TagChipList
@@ -159,6 +304,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'transparent',
+  },
+  selectionBanner: {
+    paddingVertical: 4,
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
   },
   tagsSection: {
     paddingHorizontal: 16,
