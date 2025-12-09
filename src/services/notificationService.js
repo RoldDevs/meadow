@@ -10,6 +10,11 @@ Notifications.setNotificationHandler({
     shouldSetBadge: false,
     // Don't make notifications persistent/ongoing
     priority: Notifications.AndroidNotificationPriority.HIGH,
+    // Ensure notifications are not sticky (can be dismissed)
+    ...(Platform.OS === 'android' && {
+      sticky: false,
+      autoDismiss: true,
+    }),
   }),
 });
 
@@ -101,6 +106,7 @@ export const scheduleRoutineNotification = async (routine) => {
     // Get current time to check if we should schedule for this week or next
     const now = new Date();
     const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    const currentDayFormatted = currentDay === 0 ? 7 : currentDay + 1; // Convert to 1-7 format (Sunday = 1)
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
     const currentTimeInMinutes = currentHour * 60 + currentMinute;
@@ -112,11 +118,12 @@ export const scheduleRoutineNotification = async (routine) => {
     for (const day of routine.days) {
       const weekday = dayMap[day];
       
-      // Check if this notification should be scheduled for today or next week
-      // Don't trigger immediately if the time has already passed today
-      const shouldSkipToday = (weekday === (currentDay || 7)) && currentTimeInMinutes >= notifTimeInMinutes;
+      // Skip scheduling if the notification time has already passed for today
+      if (weekday === currentDayFormatted && currentTimeInMinutes >= notifTimeInMinutes) {
+        console.log(`Skipping notification for ${day} - time has passed for today`);
+        continue; // Skip this day and move to the next
+      }
       
-      // Only schedule if the notification time hasn't passed yet for this week
       const trigger = {
         hour: notifHour,
         minute: notifMinute,

@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Alert, ScrollView } from 'react-native';
 import { TextInput, Button, useTheme, ActivityIndicator, Surface, Dialog, Portal } from 'react-native-paper';
 import TagChipList from "../../components/TagChipList";
 import { createNote, updateNote } from "../../firebase/services/notesService";
-import { createTag } from "../../firebase/services/tasksService";
+import { createTag, getAllTags } from "../../firebase/services/tasksService";
 import TopAppBar from "../../TopAppBar";
 import {
   summarizeNote,
@@ -46,6 +46,22 @@ const AddNoteScreen = ({ navigation, route }) => {
       setSelectedTags(note.tag || []);
     }
   }, [isEdit, note]);
+
+  // Load tags from Firebase
+  useEffect(() => {
+    const loadTags = async () => {
+      try {
+        const firebaseTags = await getAllTags();
+        // Keep full tag objects with {id, label, color}
+        setTags(firebaseTags);
+      } catch (error) {
+        console.error('Error loading tags:', error);
+        // Fallback to dummy tags
+        setTags(dummy_tags);
+      }
+    };
+    loadTags();
+  }, []);
 
   const handleTagSelection = (tag) => {
     setSelectedTags((prevSelectedTags) => 
@@ -230,7 +246,7 @@ const AddNoteScreen = ({ navigation, route }) => {
                 showTags={tagsVisible}
                 setShowTags={setTagsVisible}
                 whenTagSelected={handleTagSelection}
-                onCreateTag={handleOpenCreateTagDialog}
+                onCreateTag={() => navigation.navigate("Tags")}
               />
             </View>
           </View>

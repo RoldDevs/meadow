@@ -14,6 +14,7 @@ import {
 } from "react-native-paper";
 import TagChipList from "../components/TagChipList"
 import { getAllNotes, subscribeToNotes, deleteNote } from "../firebase/services/notesService";
+import { getAllTags } from "../firebase/services/tasksService";
 import { dummy_tags } from "../../Data/tasks";
 import TopAppBar from "../TopAppBar";
 
@@ -53,6 +54,22 @@ const SmartNotesScreen = () => {
     }, false, false); // exclude archived and deleted
     
     return () => unsubscribe();
+  }, []);
+
+  // Load tags from Firebase
+  useEffect(() => {
+    const loadTags = async () => {
+      try {
+        const firebaseTags = await getAllTags();
+        // Keep full tag objects with {id, label, color}
+        setTags(firebaseTags);
+      } catch (error) {
+        console.error('Error loading tags:', error);
+        // Fallback to dummy tags on error
+        setTags(dummy_tags);
+      }
+    };
+    loadTags();
   }, []);
 
   // Navigate to Add Note Page
@@ -132,12 +149,12 @@ const SmartNotesScreen = () => {
 
   // Filter Notes by Selected Tags and Search
   const filteredNotes = notes.filter((note) => {
-    // Tag filter
+    // Tag filter - support both string tags and object tags with {id, label, color}
     const matchesTags = selectedTags.length === 0 || (() => {
       const noteTags = note.tag || [];
       return noteTags.some((tag) => {
-        const tagValue = typeof tag === 'string' ? tag : tag.label || tag;
-        return selectedTags.includes(tagValue);
+        const tagId = typeof tag === 'string' ? tag : (tag.id || tag.label || tag);
+        return selectedTags.includes(tagId);
       });
     })();
 
@@ -207,9 +224,35 @@ const SmartNotesScreen = () => {
           <Text numberOfLines={3} style={{ marginBottom: 8 }}>{item.content}</Text>
           <View style={styles.tagContainer}>
             {(item.tag || []).map((tag, idx) => {
-              const tagLabel = typeof tag === 'string' ? tag : tag.label || tag;
+              // If tag is a string (ID), find the matching tag object from tags array
+              let tagLabel, tagColor;
+              
+              if (typeof tag === 'string') {
+                // Tag is an ID, find the matching tag object
+                const tagObj = tags.find(t => t.id === tag || t.label === tag);
+                if (tagObj) {
+                  tagLabel = tagObj.label;
+                  tagColor = tagObj.color;
+                } else {
+                  // If not found, just display the string
+                  tagLabel = tag;
+                  tagColor = undefined;
+                }
+              } else {
+                // Tag is already an object
+                tagLabel = tag.label || tag;
+                tagColor = tag.color;
+              }
+              
               return (
-                <Chip key={idx} style={{ marginRight: 6, marginBottom: 6 }}>
+                <Chip 
+                  key={idx} 
+                  style={[
+                    { marginRight: 6, marginBottom: 6 },
+                    tagColor ? { backgroundColor: tagColor } : undefined
+                  ]}
+                  textStyle={tagColor ? { color: '#FFFFFF' } : undefined}
+                >
                   {tagLabel}
                 </Chip>
               );
@@ -288,6 +331,7 @@ const SmartNotesScreen = () => {
             showTags={tagsVisible}
             setShowTags={setTagsVisible}
             whenTagSelected={handleTagSelection}
+            onCreateTag={() => navigation.navigate("Tags")}
           />
         </View>
 

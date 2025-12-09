@@ -27,16 +27,25 @@ const TagChipList = ({
   }
 
   const renderTagChip = (tag, index) => {
+    // Handle both string tags and object tags {id, label, color}
+    const tagLabel = typeof tag === 'string' ? tag : tag.label || tag;
+    const tagValue = typeof tag === 'string' ? tag : tag.id || tag.label || tag;
+    const tagColor = typeof tag === 'object' && tag.color ? tag.color : undefined;
+    
     return(
       <Chip
         mode="outlined"
         compact="true"
-        selected={selectedTags.includes(tag)}
+        selected={selectedTags.includes(tagValue) || selectedTags.includes(tagLabel)}
         showSelectedOverlay="true"
-        onPress={() => whenTagSelected(tag)}
-        style={styles.tagChips}
+        onPress={() => whenTagSelected(tagValue)}
+        style={[
+          styles.tagChips,
+          tagColor ? { backgroundColor: tagColor, borderColor: tagColor } : undefined
+        ]}
+        textStyle={tagColor ? { color: '#FFFFFF' } : undefined}
       >
-        {tag}
+        {tagLabel}
       </Chip>
     )
   }

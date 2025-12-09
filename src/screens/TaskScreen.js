@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { BackHandler, StyleSheet, View, FlatList, Alert} from "react-native";
 import { Text, Card, Avatar, IconButton, ProgressBar, Checkbox, Button, FAB, Chip, SegmentedButtons, Surface, Menu, ActivityIndicator, Searchbar } from "react-native-paper";
 import { useTheme } from "react-native-paper";
-import { getAllTasks, deleteTask, subscribeToTasks, updateTask } from "../firebase/services/tasksService";
+import { getAllTasks, deleteTask, subscribeToTasks, updateTask, getAllTags } from "../firebase/services/tasksService";
 
 //components
 import TopAppBar from "../TopAppBar";
@@ -65,6 +65,22 @@ const TaskScreen = ({ navigation }) => {
     });
 
     return () => unsubscribe();
+  }, []);
+
+  // Load tags from Firebase
+  useEffect(() => {
+    const loadTags = async () => {
+      try {
+        const firebaseTags = await getAllTags();
+        // Keep full tag objects with {id, label, color}
+        setTaskTags(firebaseTags);
+      } catch (error) {
+        console.error('Error loading tags:', error);
+        // Fallback to dummy tags on error
+        setTaskTags(dummy_tags);
+      }
+    };
+    loadTags();
   }, []);
 
   //filters
@@ -132,10 +148,19 @@ const TaskScreen = ({ navigation }) => {
     }
 
     const matchesPriority = (isUrgent === task.isUrgent && task.completed === false) || (filters.taskDisplayMode === "completed" && task.completed === true);
-    // Handle tags - they can be strings or objects with label property
-    const taskTagsArray = (task.tags || []).map(tag => typeof tag === 'string' ? tag : tag.label || tag);
-    const selectedTagsArray = selectedTags.map(tag => typeof tag === 'string' ? tag : tag.label || tag);
-    const matchesCategory = !selectedTagsArray.length || selectedTagsArray.every(tag => taskTagsArray.includes(tag));
+    
+    // Handle tags - support both string tags and object tags with {id, label, color}
+    // Task tags can be stored as strings or objects
+    const taskTagIds = (task.tags || []).map(tag => {
+      if (typeof tag === 'string') return tag;
+      return tag.id || tag.label || tag;
+    });
+    
+    // Check if task matches selected tags
+    const matchesCategory = !selectedTags.length || selectedTags.every(selectedTag => {
+      // selectedTag can be an id or label
+      return taskTagIds.includes(selectedTag);
+    });
     
     // Search filter
     const matchesSearch = !searchQuery || 
@@ -283,14 +308,28 @@ const TaskScreen = ({ navigation }) => {
       >
         <Card.Content style={styles.taskCard}>
           <View style={styles.taskHeader}>
-            {selectModeEnabled && (
+            {selectModeEnabled ? (
               <Checkbox
                 status={isSelected ? 'checked' : 'unchecked'}
                 onPress={() => toggleTaskSelection(item.id)}
               />
+            ) : (
+              <Checkbox
+                status={item.completed ? 'checked' : 'unchecked'}
+                onPress={async () => {
+                  try {
+                    await updateTask(item.id, { completed: !item.completed });
+                  } catch (error) {
+                    console.error('Error updating task completion:', error);
+                    Alert.alert('Error', 'Failed to update task');
+                  }
+                }}
+              />
             )}
             <View style={{ flex: 1 }}>
-              <Text variant="titleLarge">{item.title}</Text>
+              <Text variant="titleLarge" style={item.completed && { textDecorationLine: 'line-through', opacity: 0.6 }}>
+                {item.title}
+              </Text>
               <Text variant="bodyMedium">
                 {formatDate(item.date)}
               </Text>
@@ -313,8 +352,29 @@ const TaskScreen = ({ navigation }) => {
           )}
           <View style={styles.chipContainer}>
             {(item.tags || []).map((tag, index) => {
-              const tagLabel = typeof tag === 'string' ? tag : tag.label || tag;
-              const tagValue = typeof tag === 'string' ? tag : tag.id || tag;
+              // If tag is a string (ID), find the matching tag object from taskTags array
+              let tagLabel, tagValue, tagColor;
+              
+              if (typeof tag === 'string') {
+                // Tag is an ID, find the matching tag object
+                const tagObj = taskTags.find(t => t.id === tag || t.label === tag);
+                if (tagObj) {
+                  tagLabel = tagObj.label;
+                  tagValue = tagObj.id || tagObj.label;
+                  tagColor = tagObj.color;
+                } else {
+                  // If not found, just display the string
+                  tagLabel = tag;
+                  tagValue = tag;
+                  tagColor = undefined;
+                }
+              } else {
+                // Tag is already an object
+                tagLabel = tag.label || tag;
+                tagValue = tag.id || tag;
+                tagColor = tag.color;
+              }
+              
               return (
                 <Chip 
                   compact="true" 
@@ -322,6 +382,8 @@ const TaskScreen = ({ navigation }) => {
                   selected={selectedTags.includes(tagValue) || selectedTags.includes(tagLabel)}
                   onPress={() => !selectModeEnabled && handleTagSelection(tagValue)}
                   showSelectedCheck={false}
+                  style={tagColor ? { backgroundColor: tagColor } : undefined}
+                  textStyle={tagColor ? { color: '#FFFFFF' } : undefined}
                 >
                   {tagLabel}
                 </Chip>
@@ -442,6 +504,7 @@ const TaskScreen = ({ navigation }) => {
           showTags={tagsVisible}
           setShowTags={setTagsVisible}
           clearAllTagsBehavior={clearAllTags}
+          onCreateTag={() => navigation.navigate("Tags")}
         />
         
         {/* Task List */}
@@ -477,19 +540,24 @@ const createStyles = (theme) =>
     container: { 
       flex: 1, 
       padding: 16, 
-      paddingTop: 0,
+      paddingTop: 8,
       paddingBottom: 0, 
       backgroundColor: theme.colors.background, 
-      gap: 10 
+      gap: 12 
+    },
+    searchBar: {
+      marginBottom: 8,
     },
     taskList:{ 
       gap: 8,
       paddingLeft: 8,
-      paddingRight: 8
+      paddingRight: 8,
+      paddingBottom: 80,
     },
     progressGroupContainer:{
-      marginVertical: 5,
-      gap: 8
+      marginVertical: 8,
+      gap: 8,
+      marginBottom: 12
     },
     progressBar: { 
       borderRadius: 4 
@@ -501,7 +569,7 @@ const createStyles = (theme) =>
       bottom: 0,
     },
     taskCard:{
-      gap: 4
+      gap: 8
     },
     taskHeader: {
       flexDirection: 'row',
@@ -511,7 +579,7 @@ const createStyles = (theme) =>
     chipContainer:{
       flexDirection: "row",
       flexWrap: "wrap",
-      marginTop: 4,
+      marginTop: 8,
       gap: 8
     },
     emptyTaskText:{

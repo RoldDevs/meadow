@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { StyleSheet, View, FlatList, Alert, BackHandler, ScrollView } from "react-native";
+import { StyleSheet, View, FlatList, Alert, BackHandler, ScrollView, Pressable } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
-import { Appbar, useTheme, TextInput, Text, Switch, SegmentedButtons, Button, Surface, Chip, ActivityIndicator, Portal, Dialog, Checkbox } from "react-native-paper";
+import { Appbar, useTheme, TextInput, Text, Switch, SegmentedButtons, Button, Surface, Chip, ActivityIndicator, Portal, Dialog, Checkbox, IconButton } from "react-native-paper";
 import { DatePickerInput} from "react-native-paper-dates";
-import { createTask, updateTask } from '../../firebase/services/tasksService';
+import { createTask, updateTask, getAllTags } from '../../firebase/services/tasksService';
 import { generateSubtasks, generateNestedSubtasks } from '../../services/openRouterService';
 
 import TagChipList from "../../components/TagChipList";
@@ -43,6 +43,25 @@ const CreateScreen = ({ route, navigation }) => {
     }
   }, [isEdit, task]);
 
+  // Load tags from Firebase
+  useEffect(() => {
+    const loadTags = async () => {
+      try {
+        const firebaseTags = await getAllTags();
+        // Keep full tag objects with {id, label, color}
+        setTags(firebaseTags);
+        // Set most used tags to first 6
+        setMostUsedTags(firebaseTags.slice(0, 6));
+      } catch (error) {
+        console.error('Error loading tags:', error);
+        // Fallback to dummy tags
+        setTags(dummy_tags);
+        setMostUsedTags([dummy_tags[0],dummy_tags[1],dummy_tags[2],dummy_tags[3],dummy_tags[4],dummy_tags[5]]);
+      }
+    };
+    loadTags();
+  }, []);
+
   const handleFieldChange = (field, value) => {
     setFields(prev => ({
       ...prev,
@@ -73,6 +92,10 @@ const CreateScreen = ({ route, navigation }) => {
   // Manual subtask input states
   const [manualSubtaskDialogVisible, setManualSubtaskDialogVisible] = useState(false);
   const [manualSubtaskInput, setManualSubtaskInput] = useState('');
+  
+  // Subtask selection mode states
+  const [subtaskSelectMode, setSubtaskSelectMode] = useState(false);
+  const [selectedSubtasks, setSelectedSubtasks] = useState([]);
 
   const doSubtaskGeneration = async () => {
     if (!fields.taskTitle.trim()) {
@@ -336,13 +359,60 @@ const CreateScreen = ({ route, navigation }) => {
     );
   };
 
+  // Subtask selection mode functions
+  const enableSubtaskSelectMode = (subtaskIndex) => {
+    setSubtaskSelectMode(true);
+    setSelectedSubtasks([subtaskIndex]);
+  };
+
+  const disableSubtaskSelectMode = () => {
+    setSubtaskSelectMode(false);
+    setSelectedSubtasks([]);
+  };
+
+  const toggleSubtaskSelection = (subtaskIndex) => {
+    setSelectedSubtasks(prev => {
+      if (prev.includes(subtaskIndex)) {
+        return prev.filter(i => i !== subtaskIndex);
+      } else {
+        return [...prev, subtaskIndex];
+      }
+    });
+  };
+
+  const deleteSelectedSubtasks = () => {
+    Alert.alert(
+      'Delete Subtasks',
+      `Are you sure you want to delete ${selectedSubtasks.length} subtask(s)?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          onPress: () => {
+            const updatedSubtasks = fields.generatedSubtasks.filter((_, index) => !selectedSubtasks.includes(index));
+            setFields({ ...fields, generatedSubtasks: updatedSubtasks });
+            disableSubtaskSelectMode();
+          },
+          style: 'destructive',
+        },
+      ]
+    );
+  };
+
   //! main renderer
   return (
     <>
       <TopAppBar
         onBack={() => navigation.goBack()}
         title={isEdit ? "Edit Task" : "Create a task"}
-        rightButtons={ [{icon:"check",action:saveTask, disabled: saving}] }//must be an array of objects with keys icon and action
+        rightButtons={
+          subtaskSelectMode
+            ? [
+                { icon: "delete", action: deleteSelectedSubtasks, disabled: selectedSubtasks.length === 0 },
+                { icon: "close", action: disableSubtaskSelectMode }
+              ]
+            : [{ icon: "check", action: saveTask, disabled: saving }]
+        }
       />
       <ScrollView 
         style={styles.scrollView}
@@ -408,6 +478,7 @@ const CreateScreen = ({ route, navigation }) => {
           createTagAlwaysVisible={true}
           showTags={tagsVisible}
           setShowTags={setTagsVisible}
+          onCreateTag={() => navigation.navigate("Tags")}
         />
 
         {/* Subtask Generation */}
@@ -423,7 +494,7 @@ const CreateScreen = ({ route, navigation }) => {
             loading={subtasksLoading}
             style={{ flex: 1 }}
           >
-            {fields.generatedSubtasks.length === 0 ? "Generate" : "Re-generate"}
+            AI Generate
           </Button>
           <Button 
             icon="plus" 
@@ -456,57 +527,85 @@ const CreateScreen = ({ route, navigation }) => {
             </View>
           ) : fields.generatedSubtasks.length > 0 ? (
             <View style={styles.subtasksContainer}>
-              {fields.generatedSubtasks.map((subtask, index) => (
-                <View key={subtask.id || index} style={styles.subtaskItem}>
-                  <View style={styles.subtaskRow}>
-                    <Checkbox
-                      status={subtask.completed ? "checked" : "unchecked"}
-                      onPress={() => toggleSubtaskCompletion(index)}
-                    />
-                    <Text 
-                      variant="bodyMedium" 
+              {fields.generatedSubtasks.map((subtask, index) => {
+                const isSelected = selectedSubtasks.includes(index);
+                return (
+                  <Pressable
+                    key={subtask.id || index}
+                    onLongPress={() => !subtaskSelectMode && enableSubtaskSelectMode(index)}
+                    onPress={() => {
+                      if (subtaskSelectMode) {
+                        toggleSubtaskSelection(index);
+                      }
+                    }}
+                  >
+                    <Surface
                       style={[
-                        styles.subtaskText,
-                        subtask.completed && styles.subtaskTextCompleted
+                        styles.subtaskItem,
+                        isSelected && subtaskSelectMode && {
+                          borderWidth: 2,
+                          borderColor: theme.colors.primary
+                        }
                       ]}
+                      elevation={isSelected && subtaskSelectMode ? 2 : 0}
                     >
-                      {subtask.title}
-                    </Text>
-                    <Button
-                      icon="auto-fix"
-                      mode="text"
-                      compact
-                      onPress={() => handleGenerateNestedSubtasks(index)}
-                      disabled={generatingNestedFor === index}
-                      loading={generatingNestedFor === index}
-                    >
-                      Generate Sub-subtasks
-                    </Button>
-                  </View>
-                  {/* Nested Subtasks */}
-                  {subtask.subtasks && subtask.subtasks.length > 0 && (
-                    <View style={styles.nestedSubtasksContainer}>
-                      {subtask.subtasks.map((nestedSubtask, nestedIndex) => (
-                        <View key={nestedSubtask.id || nestedIndex} style={styles.nestedSubtaskItem}>
+                      <View style={styles.subtaskRow}>
+                        {subtaskSelectMode && (
                           <Checkbox
-                            status={nestedSubtask.completed ? "checked" : "unchecked"}
-                            onPress={() => toggleNestedSubtaskCompletion(index, nestedIndex)}
+                            status={isSelected ? 'checked' : 'unchecked'}
+                            onPress={() => toggleSubtaskSelection(index)}
                           />
-                          <Text 
-                            variant="bodySmall" 
-                            style={[
-                              styles.nestedSubtaskText,
-                              nestedSubtask.completed && styles.subtaskTextCompleted
-                            ]}
-                          >
-                            {nestedSubtask.title}
-                          </Text>
+                        )}
+                        {!subtaskSelectMode && (
+                          <Checkbox
+                            status={subtask.completed ? "checked" : "unchecked"}
+                            onPress={() => toggleSubtaskCompletion(index)}
+                          />
+                        )}
+                        <Text 
+                          variant="bodyMedium" 
+                          style={[
+                            styles.subtaskText,
+                            subtask.completed && styles.subtaskTextCompleted
+                          ]}
+                        >
+                          {subtask.title}
+                        </Text>
+                        {!subtaskSelectMode && (
+                          <IconButton
+                            icon="auto-fix"
+                            size={20}
+                            onPress={() => handleGenerateNestedSubtasks(index)}
+                            disabled={generatingNestedFor === index}
+                          />
+                        )}
+                      </View>
+                      {/* Nested Subtasks */}
+                      {subtask.subtasks && subtask.subtasks.length > 0 && (
+                        <View style={styles.nestedSubtasksContainer}>
+                          {subtask.subtasks.map((nestedSubtask, nestedIndex) => (
+                            <View key={nestedSubtask.id || nestedIndex} style={styles.nestedSubtaskItem}>
+                              <Checkbox
+                                status={nestedSubtask.completed ? "checked" : "unchecked"}
+                                onPress={() => toggleNestedSubtaskCompletion(index, nestedIndex)}
+                              />
+                              <Text 
+                                variant="bodySmall" 
+                                style={[
+                                  styles.nestedSubtaskText,
+                                  nestedSubtask.completed && styles.subtaskTextCompleted
+                                ]}
+                              >
+                                {nestedSubtask.title}
+                              </Text>
+                            </View>
+                          ))}
                         </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              ))}
+                      )}
+                    </Surface>
+                  </Pressable>
+                );
+              })}
             </View>
           ) : (
             <Text variant="bodySmall" style={{textAlign: 'center', paddingVertical: 10}}>
