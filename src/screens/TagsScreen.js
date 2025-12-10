@@ -199,7 +199,11 @@ const TagsScreen = ({ navigation }) => {
 
       {/* Create/Edit Tag Dialog */}
       <Portal>
-        <Dialog visible={dialogVisible} onDismiss={handleCloseDialog}>
+        <Dialog 
+          visible={dialogVisible} 
+          onDismiss={handleCloseDialog}
+          dismissable={true}
+        >
           <Dialog.Title>{editingTag ? 'Edit Tag' : 'Create Tag'}</Dialog.Title>
           <Dialog.Content>
             <TextInput
@@ -207,10 +211,11 @@ const TagsScreen = ({ navigation }) => {
               label="Tag Name"
               value={tagLabel}
               onChangeText={setTagLabel}
-              autoFocus
+              autoFocus={false}
               returnKeyType="done"
               onSubmitEditing={handleSaveTag}
               style={styles.input}
+              selectTextOnFocus={true}
             />
             
             <Text variant="labelLarge" style={styles.colorLabel}>

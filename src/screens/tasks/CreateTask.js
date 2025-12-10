@@ -835,10 +835,14 @@ const CreateScreen = ({ route, navigation }) => {
 
       {/* Manual Subtask Input Dialog */}
       <Portal>
-        <Dialog visible={manualSubtaskDialogVisible} onDismiss={() => {
-          setManualSubtaskDialogVisible(false);
-          setManualSubtaskInput('');
-        }}>
+        <Dialog 
+          visible={manualSubtaskDialogVisible} 
+          onDismiss={() => {
+            setManualSubtaskDialogVisible(false);
+            setManualSubtaskInput('');
+          }}
+          dismissable={true}
+        >
           <Dialog.Title>Add Subtask</Dialog.Title>
           <Dialog.Content>
             <TextInput
@@ -847,9 +851,10 @@ const CreateScreen = ({ route, navigation }) => {
               placeholder="Enter subtask name..."
               value={manualSubtaskInput}
               onChangeText={setManualSubtaskInput}
-              autoFocus
+              autoFocus={false}
               returnKeyType="done"
               onSubmitEditing={handleAddManualSubtask}
+              selectTextOnFocus={true}
             />
           </Dialog.Content>
           <Dialog.Actions>
@@ -869,11 +874,15 @@ const CreateScreen = ({ route, navigation }) => {
 
       {/* Manual Nested Subtask Input Dialog */}
       <Portal>
-        <Dialog visible={nestedSubtaskDialogVisible} onDismiss={() => {
-          setNestedSubtaskDialogVisible(false);
-          setNestedSubtaskInput('');
-          setCurrentParentIndex(null);
-        }}>
+        <Dialog 
+          visible={nestedSubtaskDialogVisible} 
+          onDismiss={() => {
+            setNestedSubtaskDialogVisible(false);
+            setNestedSubtaskInput('');
+            setCurrentParentIndex(null);
+          }}
+          dismissable={true}
+        >
           <Dialog.Title>Add Nested Subtask</Dialog.Title>
           <Dialog.Content>
             <TextInput
@@ -882,9 +891,10 @@ const CreateScreen = ({ route, navigation }) => {
               placeholder="Enter nested subtask name..."
               value={nestedSubtaskInput}
               onChangeText={setNestedSubtaskInput}
-              autoFocus
+              autoFocus={false}
               returnKeyType="done"
               onSubmitEditing={handleAddManualNestedSubtask}
+              selectTextOnFocus={true}
             />
           </Dialog.Content>
           <Dialog.Actions>

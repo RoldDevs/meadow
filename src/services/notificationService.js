@@ -92,26 +92,30 @@ export const scheduleRoutineNotification = async (routine) => {
       }
     }
 
-    // Get current day of week
+    // Get current day of week mapping
     const dayMap = {
-      'Sun': 1,
-      'Mon': 2,
-      'Tue': 3,
-      'Wed': 4,
-      'Thu': 5,
-      'Fri': 6,
-      'Sat': 7
+      'Sun': 1,  // Sunday
+      'Mon': 2,  // Monday
+      'Tue': 3,  // Tuesday
+      'Wed': 4,  // Wednesday
+      'Thu': 5,  // Thursday
+      'Fri': 6,  // Friday
+      'Sat': 7   // Saturday
     };
 
     // Get current time to check if we should schedule for this week or next
     const now = new Date();
     const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    // Match expo-notifications weekday format: Sunday = 1, Monday = 2, etc.
-    const currentDayFormatted = currentDay + 1; // Convert to 1-7 format where Sunday = 1
+    // Convert to expo-notifications format: Sunday = 1, Monday = 2, etc.
+    const currentDayFormatted = currentDay === 0 ? 1 : currentDay + 1;
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
     const currentTimeInMinutes = currentHour * 60 + currentMinute;
     const notifTimeInMinutes = notifHour * 60 + notifMinute;
+
+    console.log('Current day:', currentDay, 'Formatted:', currentDayFormatted);
+    console.log('Current time:', currentHour, ':', currentMinute, '(', currentTimeInMinutes, 'mins)');
+    console.log('Notification time:', notifHour, ':', notifMinute, '(', notifTimeInMinutes, 'mins)');
 
     // Schedule notification for each day the routine is active
     const notificationIds = [];
@@ -119,10 +123,12 @@ export const scheduleRoutineNotification = async (routine) => {
     for (const day of routine.days) {
       const weekday = dayMap[day];
       
-      // Skip scheduling if the notification time has already passed for today
+      console.log(`Processing ${day} (weekday ${weekday})`);
+      
+      // Skip scheduling if it's the same day and the notification time has already passed
       if (weekday === currentDayFormatted && currentTimeInMinutes >= notifTimeInMinutes) {
-        console.log(`Skipping notification for ${day} - time has passed for today`);
-        continue; // Skip this day and move to the next
+        console.log(`✗ Skipping notification for ${day} - time has passed for today`);
+        continue; // Skip this day - will schedule for next week automatically
       }
       
       const trigger = {
@@ -145,7 +151,7 @@ export const scheduleRoutineNotification = async (routine) => {
       });
 
       notificationIds.push(identifier);
-      console.log(`Scheduled notification for ${day} at ${notifHour}:${notifMinute.toString().padStart(2, '0')}`);
+      console.log(`✓ Scheduled notification for ${day} at ${notifHour}:${notifMinute.toString().padStart(2, '0')}, weekday: ${weekday}`);
     }
 
     return notificationIds.join(',');
