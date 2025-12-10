@@ -1,5 +1,5 @@
 import React from "react";
-import { View, FlatList, StyleSheet } from "react-native";
+import { View, FlatList, StyleSheet, Pressable } from "react-native";
 import { Avatar, Button, Card, IconButton, Text } from "react-native-paper";
 import { useNavigation } from "@react-navigation/native";
 import { useTheme } from "react-native-paper";
@@ -68,11 +68,22 @@ const Dashboard = () => {
   ]
   
   const DashboardCard = ({item}) => {
+    // Handle navigation based on timer state
+    const handleCardPress = () => {
+      if (item.route === "Timer" && isRunning) {
+        // If timer is running, navigate to countdown screen
+        navigation.navigate("Countdown", { focusMinutes: 25, breakMinutes: breakMinutes });
+      } else {
+        // Normal navigation
+        navigation.navigate(item.route);
+      }
+    };
+
     return(
       <Card
         key={item.id}
         mode={'elevated'}
-        onPress={() => navigation.navigate(item.route)}
+        onPress={handleCardPress}
       >
         {item.cover && showCovers &&
           <View style={styles.cardFilter}>
@@ -110,14 +121,16 @@ const Dashboard = () => {
       />
 
       {isRunning && (
-        <Card style={{ marginBottom: 10 }}>
-          <Card.Title
-            title={`Current Session: ${phase}`}
-            subtitle={`Time Remaining: ${formatTime(remainingTime)}`}
-            left={(props) => <Avatar.Icon {...props} icon="clock-outline" />}
-            right={(props) => <IconButton {...props} icon="close" iconColor={theme.colors.error} onPress={() => stopTimer()} />}
-          />
-        </Card>
+        <Pressable onPress={() => navigation.navigate("Countdown", { focusMinutes: 25, breakMinutes: breakMinutes })}>
+          <Card style={{ marginBottom: 10 }}>
+            <Card.Title
+              title={`Current Session: ${phase}`}
+              subtitle={`Time Remaining: ${formatTime(remainingTime)}`}
+              left={(props) => <Avatar.Icon {...props} icon="clock-outline" />}
+              right={(props) => <IconButton {...props} icon="close" iconColor={theme.colors.error} onPress={() => stopTimer()} />}
+            />
+          </Card>
+        </Pressable>
       )}
 
       {/* DEBUGGING */}

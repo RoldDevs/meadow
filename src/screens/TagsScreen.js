@@ -208,6 +208,8 @@ const TagsScreen = ({ navigation }) => {
               value={tagLabel}
               onChangeText={setTagLabel}
               autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleSaveTag}
               style={styles.input}
             />
             

@@ -96,6 +96,12 @@ const CreateScreen = ({ route, navigation }) => {
   // Subtask selection mode states
   const [subtaskSelectMode, setSubtaskSelectMode] = useState(false);
   const [selectedSubtasks, setSelectedSubtasks] = useState([]);
+  const [selectedNestedSubtasks, setSelectedNestedSubtasks] = useState({}); // {parentIndex: [nestedIndex1, nestedIndex2]}
+  
+  // Nested subtask manual input states
+  const [nestedSubtaskDialogVisible, setNestedSubtaskDialogVisible] = useState(false);
+  const [nestedSubtaskInput, setNestedSubtaskInput] = useState('');
+  const [currentParentIndex, setCurrentParentIndex] = useState(null);
 
   const doSubtaskGeneration = async () => {
     if (!fields.taskTitle.trim()) {
@@ -107,12 +113,16 @@ const CreateScreen = ({ route, navigation }) => {
     setSubtasksLoading(true);
 
     try {
-      const subtasks = await generateSubtasks(fields.taskTitle, fields.generatedSubtasks);
-      handleFieldChange("generatedSubtasks", subtasks);
+      const newSubtasks = await generateSubtasks(fields.taskTitle, fields.generatedSubtasks);
+      // Append new subtasks to existing ones instead of replacing
+      const updatedSubtasks = [...fields.generatedSubtasks, ...newSubtasks];
+      handleFieldChange("generatedSubtasks", updatedSubtasks);
     } catch (error) {
       console.error("Error generating subtasks:", error);
       invalidInputDialog("Failed to generate subtasks. Please try again.");
-      setSubtasksVisible(false);
+      if (fields.generatedSubtasks.length === 0) {
+        setSubtasksVisible(false);
+      }
     } finally {
       setSubtasksLoading(false);
     }
@@ -148,6 +158,34 @@ const CreateScreen = ({ route, navigation }) => {
     }
   };
 
+  // Add manual nested subtask
+  const handleAddManualNestedSubtask = () => {
+    if (!nestedSubtaskInput.trim() || currentParentIndex === null) {
+      return;
+    }
+
+    const newNestedSubtask = {
+      id: `subtask-${Date.now()}`,
+      title: nestedSubtaskInput.trim(),
+      completed: false,
+      subtasks: [],
+    };
+
+    const updatedSubtasks = [...fields.generatedSubtasks];
+    const parentSubtask = updatedSubtasks[currentParentIndex];
+    
+    updatedSubtasks[currentParentIndex] = {
+      ...parentSubtask,
+      subtasks: [...(parentSubtask.subtasks || []), newNestedSubtask],
+    };
+    
+    handleFieldChange("generatedSubtasks", updatedSubtasks);
+    
+    setNestedSubtaskInput('');
+    setNestedSubtaskDialogVisible(false);
+    setCurrentParentIndex(null);
+  };
+
   const handleGenerateNestedSubtasks = async (parentSubtaskIndex) => {
     const parentSubtask = fields.generatedSubtasks[parentSubtaskIndex];
     if (!parentSubtask) return;
@@ -159,6 +197,7 @@ const CreateScreen = ({ route, navigation }) => {
       const updatedSubtasks = [...fields.generatedSubtasks];
       updatedSubtasks[parentSubtaskIndex] = {
         ...parentSubtask,
+        // Append new nested subtasks to existing ones
         subtasks: [...(parentSubtask.subtasks || []), ...nestedSubtasks],
       };
       handleFieldChange("generatedSubtasks", updatedSubtasks);
@@ -363,11 +402,19 @@ const CreateScreen = ({ route, navigation }) => {
   const enableSubtaskSelectMode = (subtaskIndex) => {
     setSubtaskSelectMode(true);
     setSelectedSubtasks([subtaskIndex]);
+    setSelectedNestedSubtasks({});
+  };
+
+  const enableNestedSubtaskSelectMode = (parentIndex, nestedIndex) => {
+    setSubtaskSelectMode(true);
+    setSelectedSubtasks([]);
+    setSelectedNestedSubtasks({ [parentIndex]: [nestedIndex] });
   };
 
   const disableSubtaskSelectMode = () => {
     setSubtaskSelectMode(false);
     setSelectedSubtasks([]);
+    setSelectedNestedSubtasks({});
   };
 
   const toggleSubtaskSelection = (subtaskIndex) => {
@@ -380,17 +427,54 @@ const CreateScreen = ({ route, navigation }) => {
     });
   };
 
+  const toggleNestedSubtaskSelection = (parentIndex, nestedIndex) => {
+    setSelectedNestedSubtasks(prev => {
+      const parentSelections = prev[parentIndex] || [];
+      if (parentSelections.includes(nestedIndex)) {
+        const updated = parentSelections.filter(i => i !== nestedIndex);
+        if (updated.length === 0) {
+          const { [parentIndex]: _, ...rest } = prev;
+          return rest;
+        }
+        return { ...prev, [parentIndex]: updated };
+      } else {
+        return { ...prev, [parentIndex]: [...parentSelections, nestedIndex] };
+      }
+    });
+  };
+
   const deleteSelectedSubtasks = () => {
+    const totalSelected = selectedSubtasks.length + 
+      Object.values(selectedNestedSubtasks).reduce((sum, arr) => sum + arr.length, 0);
+    
+    if (totalSelected === 0) return;
+
     Alert.alert(
       'Delete Subtasks',
-      `Are you sure you want to delete ${selectedSubtasks.length} subtask(s)?`,
+      `Are you sure you want to delete ${totalSelected} subtask(s)?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           onPress: () => {
-            const updatedSubtasks = fields.generatedSubtasks.filter((_, index) => !selectedSubtasks.includes(index));
-            setFields({ ...fields, generatedSubtasks: updatedSubtasks });
+            let updatedSubtasks = [...fields.generatedSubtasks];
+            
+            // Delete nested subtasks first
+            Object.keys(selectedNestedSubtasks).forEach(parentIndex => {
+              const nestedIndices = selectedNestedSubtasks[parentIndex];
+              const parent = updatedSubtasks[parentIndex];
+              if (parent && parent.subtasks) {
+                updatedSubtasks[parentIndex] = {
+                  ...parent,
+                  subtasks: parent.subtasks.filter((_, idx) => !nestedIndices.includes(idx))
+                };
+              }
+            });
+            
+            // Then delete parent subtasks
+            updatedSubtasks = updatedSubtasks.filter((_, index) => !selectedSubtasks.includes(index));
+            
+            handleFieldChange("generatedSubtasks", updatedSubtasks);
             disableSubtaskSelectMode();
           },
           style: 'destructive',
@@ -408,7 +492,11 @@ const CreateScreen = ({ route, navigation }) => {
         rightButtons={
           subtaskSelectMode
             ? [
-                { icon: "delete", action: deleteSelectedSubtasks, disabled: selectedSubtasks.length === 0 },
+                { 
+                  icon: "delete", 
+                  action: deleteSelectedSubtasks, 
+                  disabled: selectedSubtasks.length === 0 && Object.keys(selectedNestedSubtasks).length === 0 
+                },
                 { icon: "close", action: disableSubtaskSelectMode }
               ]
             : [{ icon: "check", action: saveTask, disabled: saving }]
@@ -583,23 +671,79 @@ const CreateScreen = ({ route, navigation }) => {
                       {/* Nested Subtasks */}
                       {subtask.subtasks && subtask.subtasks.length > 0 && (
                         <View style={styles.nestedSubtasksContainer}>
-                          {subtask.subtasks.map((nestedSubtask, nestedIndex) => (
-                            <View key={nestedSubtask.id || nestedIndex} style={styles.nestedSubtaskItem}>
-                              <Checkbox
-                                status={nestedSubtask.completed ? "checked" : "unchecked"}
-                                onPress={() => toggleNestedSubtaskCompletion(index, nestedIndex)}
-                              />
-                              <Text 
-                                variant="bodySmall" 
-                                style={[
-                                  styles.nestedSubtaskText,
-                                  nestedSubtask.completed && styles.subtaskTextCompleted
-                                ]}
+                          {subtask.subtasks.map((nestedSubtask, nestedIndex) => {
+                            const isNestedSelected = selectedNestedSubtasks[index]?.includes(nestedIndex);
+                            return (
+                              <Pressable
+                                key={nestedSubtask.id || nestedIndex}
+                                onLongPress={() => !subtaskSelectMode && enableNestedSubtaskSelectMode(index, nestedIndex)}
+                                onPress={() => {
+                                  if (subtaskSelectMode) {
+                                    toggleNestedSubtaskSelection(index, nestedIndex);
+                                  }
+                                }}
                               >
-                                {nestedSubtask.title}
-                              </Text>
-                            </View>
-                          ))}
+                                <View style={[
+                                  styles.nestedSubtaskItem,
+                                  isNestedSelected && subtaskSelectMode && {
+                                    backgroundColor: theme.colors.primaryContainer,
+                                    borderRadius: 4,
+                                    padding: 4,
+                                    marginHorizontal: -4,
+                                  }
+                                ]}>
+                                  {subtaskSelectMode && (
+                                    <Checkbox
+                                      status={isNestedSelected ? 'checked' : 'unchecked'}
+                                      onPress={() => toggleNestedSubtaskSelection(index, nestedIndex)}
+                                    />
+                                  )}
+                                  {!subtaskSelectMode && (
+                                    <Checkbox
+                                      status={nestedSubtask.completed ? "checked" : "unchecked"}
+                                      onPress={() => toggleNestedSubtaskCompletion(index, nestedIndex)}
+                                    />
+                                  )}
+                                  <Text 
+                                    variant="bodySmall" 
+                                    style={[
+                                      styles.nestedSubtaskText,
+                                      nestedSubtask.completed && styles.subtaskTextCompleted
+                                    ]}
+                                  >
+                                    {nestedSubtask.title}
+                                  </Text>
+                                </View>
+                              </Pressable>
+                            );
+                          })}
+                          {!subtaskSelectMode && (
+                            <IconButton
+                              icon="plus"
+                              size={16}
+                              mode="contained-tonal"
+                              onPress={() => {
+                                setCurrentParentIndex(index);
+                                setNestedSubtaskDialogVisible(true);
+                              }}
+                              style={styles.addNestedSubtaskButton}
+                            />
+                          )}
+                        </View>
+                      )}
+                      {/* Show add button even if no nested subtasks exist */}
+                      {(!subtask.subtasks || subtask.subtasks.length === 0) && !subtaskSelectMode && (
+                        <View style={styles.nestedSubtasksContainer}>
+                          <IconButton
+                            icon="plus"
+                            size={16}
+                            mode="contained-tonal"
+                            onPress={() => {
+                              setCurrentParentIndex(index);
+                              setNestedSubtaskDialogVisible(true);
+                            }}
+                            style={styles.addNestedSubtaskButton}
+                          />
                         </View>
                       )}
                     </Surface>
@@ -691,7 +835,10 @@ const CreateScreen = ({ route, navigation }) => {
 
       {/* Manual Subtask Input Dialog */}
       <Portal>
-        <Dialog visible={manualSubtaskDialogVisible} onDismiss={() => setManualSubtaskDialogVisible(false)}>
+        <Dialog visible={manualSubtaskDialogVisible} onDismiss={() => {
+          setManualSubtaskDialogVisible(false);
+          setManualSubtaskInput('');
+        }}>
           <Dialog.Title>Add Subtask</Dialog.Title>
           <Dialog.Content>
             <TextInput
@@ -701,14 +848,54 @@ const CreateScreen = ({ route, navigation }) => {
               value={manualSubtaskInput}
               onChangeText={setManualSubtaskInput}
               autoFocus
+              returnKeyType="done"
               onSubmitEditing={handleAddManualSubtask}
             />
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={() => setManualSubtaskDialogVisible(false)}>Cancel</Button>
+            <Button onPress={() => {
+              setManualSubtaskDialogVisible(false);
+              setManualSubtaskInput('');
+            }}>Cancel</Button>
             <Button 
               onPress={handleAddManualSubtask}
               disabled={!manualSubtaskInput.trim()}
+            >
+              Add
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+
+      {/* Manual Nested Subtask Input Dialog */}
+      <Portal>
+        <Dialog visible={nestedSubtaskDialogVisible} onDismiss={() => {
+          setNestedSubtaskDialogVisible(false);
+          setNestedSubtaskInput('');
+          setCurrentParentIndex(null);
+        }}>
+          <Dialog.Title>Add Nested Subtask</Dialog.Title>
+          <Dialog.Content>
+            <TextInput
+              mode="outlined"
+              label="Nested Subtask"
+              placeholder="Enter nested subtask name..."
+              value={nestedSubtaskInput}
+              onChangeText={setNestedSubtaskInput}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleAddManualNestedSubtask}
+            />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => {
+              setNestedSubtaskDialogVisible(false);
+              setNestedSubtaskInput('');
+              setCurrentParentIndex(null);
+            }}>Cancel</Button>
+            <Button 
+              onPress={handleAddManualNestedSubtask}
+              disabled={!nestedSubtaskInput.trim()}
             >
               Add
             </Button>
@@ -784,6 +971,10 @@ const createStyles = (theme) =>
     },
     nestedSubtaskText: {
       flex: 1,
+    },
+    addNestedSubtaskButton: {
+      marginTop: 4,
+      marginLeft: -8,
     },
   });
 

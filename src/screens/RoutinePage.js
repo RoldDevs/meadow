@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {View,FlatList,StyleSheet, ScrollView, Alert, BackHandler} from "react-native";
+import {View,FlatList,StyleSheet, ScrollView, Alert, BackHandler, Pressable} from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import {Appbar, Button, Text, Surface, Switch, FAB, useTheme, Chip, ActivityIndicator, Checkbox} from "react-native-paper";
 import { getAllRoutines, subscribeToRoutines, updateRoutine, deleteRoutine } from "../firebase/services/routinesService";
@@ -161,49 +161,49 @@ const RoutinePage = () => {
     const isSelected = selectedRoutines.includes(item.id);
     
     return (
-      <Surface 
-        style={[
-          styles.card,
-          isSelected && selectModeEnabled && {
-            borderWidth: 2,
-            borderColor: theme.colors.primary
+      <Pressable
+        onLongPress={() => !selectModeEnabled && enableSelectMode(item.id)}
+        onPress={() => {
+          if (selectModeEnabled) {
+            toggleRoutineSelection(item.id);
+          } else {
+            // Navigate to edit routine
+            navigation.navigate("CreateRoutine", { routine: item, isEdit: true });
           }
-        ]}
+        }}
       >
-        <View 
-          style={styles.listItem}
-          onStartShouldSetResponder={() => true}
-          onResponderRelease={() => {
-            if (selectModeEnabled) {
-              toggleRoutineSelection(item.id);
-            } else {
-              // Navigate to edit routine
-              navigation.navigate("CreateRoutine", { routine: item, isEdit: true });
+        <Surface 
+          style={[
+            styles.card,
+            isSelected && selectModeEnabled && {
+              borderWidth: 2,
+              borderColor: theme.colors.primary
             }
-          }}
-          onLongPress={() => !selectModeEnabled && enableSelectMode(item.id)}
+          ]}
         >
-          {selectModeEnabled && (
-            <Checkbox
-              status={isSelected ? 'checked' : 'unchecked'}
-              onPress={() => toggleRoutineSelection(item.id)}
-            />
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>{item.name}</Text>
-            <Text style={styles.timeText}>
-              {`${item.startTime}${item.endTime ? ` - ${item.endTime}` : ""}`}
-            </Text>
-            <Text style={styles.daysText}>{item.days.join(", ")}</Text>
+          <View style={styles.listItem}>
+            {selectModeEnabled && (
+              <Checkbox
+                status={isSelected ? 'checked' : 'unchecked'}
+                onPress={() => toggleRoutineSelection(item.id)}
+              />
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>{item.name}</Text>
+              <Text style={styles.timeText}>
+                {`${item.startTime}${item.endTime ? ` - ${item.endTime}` : ""}`}
+              </Text>
+              <Text style={styles.daysText}>{item.days.join(", ")}</Text>
+            </View>
+            {!selectModeEnabled && (
+              <Switch
+                value={item.enabled}
+                onValueChange={() => toggleRoutine(item.id)}
+              />
+            )}
           </View>
-          {!selectModeEnabled && (
-            <Switch
-              value={item.enabled}
-              onValueChange={() => toggleRoutine(item.id)}
-            />
-          )}
-        </View>
-      </Surface>
+        </Surface>
+      </Pressable>
     );
   };
 

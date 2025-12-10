@@ -264,7 +264,7 @@ const AddNoteScreen = ({ navigation, route }) => {
               mode="outlined"
               style={styles.contentInput}
               editable={!aiProcessing}
-              numberOfLines={8}
+              scrollEnabled={true}
             />
           </View>
 
@@ -461,8 +461,6 @@ const styles = StyleSheet.create({
   contentInput: {
     textAlignVertical: 'top',
     minHeight: 200,
-    maxHeight: 400,
-    paddingVertical: 8,
   },
   aiActionsContainer: {
     padding: 16,

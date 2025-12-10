@@ -21,6 +21,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { FirebaseProvider } from './contexts/FirebaseContext';
 import { seedFirestore } from '../scripts/seedFirestore';
 import { startTimeTracking, endTimeTracking, cleanupOldStats } from './services/timeTrackingService';
+import { setupNotificationChannels, requestNotificationPermissions } from './services/notificationService';
 
 //colors, theming, etc.
 import { useColorScheme } from 'react-native';
@@ -64,13 +65,17 @@ export default function App() {
   useEffect(() => {
     const initializeCollections = async () => {
       try {
+        // Request notification permissions
+        await requestNotificationPermissions();
+        // Setup notification channels
+        await setupNotificationChannels();
         // Seed collections with initial data if they're empty
         await seedFirestore();
         // Clean up old time tracking stats
         await cleanupOldStats();
       } catch (error) {
         // Silently fail - collections might already exist or will be created on first use
-        console.log('Firestore seeding:', error.message || 'Collections already initialized');
+        console.log('Initialization:', error.message || 'Already initialized');
       }
     };
     

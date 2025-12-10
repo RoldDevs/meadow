@@ -106,7 +106,8 @@ export const scheduleRoutineNotification = async (routine) => {
     // Get current time to check if we should schedule for this week or next
     const now = new Date();
     const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    const currentDayFormatted = currentDay === 0 ? 7 : currentDay + 1; // Convert to 1-7 format (Sunday = 1)
+    // Match expo-notifications weekday format: Sunday = 1, Monday = 2, etc.
+    const currentDayFormatted = currentDay + 1; // Convert to 1-7 format where Sunday = 1
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
     const currentTimeInMinutes = currentHour * 60 + currentMinute;
@@ -221,6 +222,83 @@ export const cancelAllNotifications = async () => {
     console.log('All notifications cancelled');
   } catch (error) {
     console.error('Error cancelling all notifications:', error);
+  }
+};
+
+/**
+ * Create or update a persistent notification for the focus timer
+ * @param {string} phase - "Work" or "Break"
+ * @param {number} remainingTime - Time remaining in seconds
+ * @returns {Promise<void>}
+ */
+export const showTimerNotification = async (phase, remainingTime) => {
+  try {
+    const minutes = Math.floor(remainingTime / 60);
+    const seconds = remainingTime % 60;
+    const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: phase === 'Work' ? '🎯 Focus Time' : '☕ Break Time',
+        body: `${timeString} remaining`,
+        data: { type: 'timer', phase, remainingTime },
+        sound: false,
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        categoryIdentifier: 'timer',
+        sticky: true,
+        ...(Platform.OS === 'android' && {
+          channelId: 'timer-ongoing',
+        }),
+      },
+      trigger: null, // Show immediately
+      identifier: 'timer-notification', // Fixed ID to update the same notification
+    });
+  } catch (error) {
+    console.error('Error showing timer notification:', error);
+  }
+};
+
+/**
+ * Dismiss the timer notification
+ */
+export const dismissTimerNotification = async () => {
+  try {
+    await Notifications.dismissNotificationAsync('timer-notification');
+  } catch (error) {
+    console.error('Error dismissing timer notification:', error);
+  }
+};
+
+/**
+ * Setup notification channels for Android
+ */
+export const setupNotificationChannels = async () => {
+  if (Platform.OS === 'android') {
+    try {
+      // Channel for routine reminders
+      await Notifications.setNotificationChannelAsync('routine-reminders', {
+        name: 'Routine Reminders',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
+        sound: 'default',
+        enableVibrate: true,
+      });
+
+      // Channel for ongoing timer notifications
+      await Notifications.setNotificationChannelAsync('timer-ongoing', {
+        name: 'Focus Timer',
+        importance: Notifications.AndroidImportance.MAX,
+        sound: null, // No sound for ongoing updates
+        enableVibrate: false,
+        showBadge: false,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+      
+      console.log('Notification channels created successfully');
+    } catch (error) {
+      console.error('Error setting up notification channels:', error);
+    }
   }
 };
 

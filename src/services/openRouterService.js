@@ -170,15 +170,15 @@ export const reorganizeNote = async (noteContent) => {
  * Generate subtasks for a task
  * @param {string} taskTitle - The task title
  * @param {Array} existingSubtasks - Existing subtasks (optional)
- * @returns {Promise<Array>} - Array of subtask objects
+ * @returns {Promise<Array>} - Array of subtask objects (max 5)
  */
 export const generateSubtasks = async (taskTitle, existingSubtasks = []) => {
   const context = existingSubtasks.length > 0
     ? `Existing subtasks: ${existingSubtasks.map(s => s.title).join(", ")}\n\n`
     : "";
   
-  const prompt = `${context}Generate a list of subtasks for the following task: "${taskTitle}". 
-Return the subtasks as a simple list, one per line. Do not include numbers or bullet points, just the subtask text.`;
+  const prompt = `${context}Generate exactly 5 subtasks for the following task: "${taskTitle}". 
+Return the subtasks as a simple list, one per line. Do not include numbers or bullet points, just the subtask text. Generate ONLY 5 subtasks.`;
 
   try {
     const response = await callOpenRouter(prompt);
@@ -188,7 +188,8 @@ Return the subtasks as a simple list, one per line. Do not include numbers or bu
       .map((line) => line.trim())
       .filter((line) => line.length > 0 && !line.match(/^\d+[\.\)]/)) // Remove numbered items
       .map((line) => line.replace(/^[-•*]\s*/, "")) // Remove bullet points
-      .filter((line) => line.length > 0);
+      .filter((line) => line.length > 0)
+      .slice(0, 5); // Ensure max 5 subtasks
 
     return subtaskLines.map((title, index) => ({
       id: `subtask-${Date.now()}-${index}`,
@@ -205,11 +206,11 @@ Return the subtasks as a simple list, one per line. Do not include numbers or bu
 /**
  * Generate nested subtasks (second level subtasks from first level)
  * @param {string} parentSubtaskTitle - The parent subtask title
- * @returns {Promise<Array>} - Array of nested subtask objects
+ * @returns {Promise<Array>} - Array of nested subtask objects (max 5)
  */
 export const generateNestedSubtasks = async (parentSubtaskTitle) => {
-  const prompt = `Generate a list of detailed subtasks for: "${parentSubtaskTitle}". 
-Return the subtasks as a simple list, one per line. Do not include numbers or bullet points, just the subtask text.`;
+  const prompt = `Generate exactly 5 detailed subtasks for: "${parentSubtaskTitle}". 
+Return the subtasks as a simple list, one per line. Do not include numbers or bullet points, just the subtask text. Generate ONLY 5 subtasks.`;
 
   try {
     const response = await callOpenRouter(prompt);
@@ -218,7 +219,8 @@ Return the subtasks as a simple list, one per line. Do not include numbers or bu
       .map((line) => line.trim())
       .filter((line) => line.length > 0 && !line.match(/^\d+[\.\)]/))
       .map((line) => line.replace(/^[-•*]\s*/, ""))
-      .filter((line) => line.length > 0);
+      .filter((line) => line.length > 0)
+      .slice(0, 5); // Ensure max 5 subtasks
 
     return subtaskLines.map((title, index) => ({
       id: `subtask-${Date.now()}-${index}`,

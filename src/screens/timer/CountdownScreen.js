@@ -4,6 +4,7 @@ import { CountdownCircleTimer } from "react-native-countdown-circle-timer";
 import { Text, Button, Surface, useTheme } from "react-native-paper";
 import { Audio } from "expo-av";
 import { useTimer } from "../../contexts/TimerContext";
+import { useFocusEffect } from "@react-navigation/native";
 
 const { width } = Dimensions.get("window");
 
@@ -13,13 +14,19 @@ const CountdownScreen = ({ route, navigation }) => {
   const { focusMinutes, breakMinutes } = route.params;
   const [key, setKey] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [phase, setPhase] = useState("Work");
-  const { startTimer, stopTimer } = useTimer();
+  const [localPhase, setLocalPhase] = useState("Work");
+  const { startTimer, stopTimer, remainingTime, phase: contextPhase, isRunning } = useTimer();
 
   const soundRef = useRef(null);
 
+  // Sync local phase with context phase
   useEffect(() => {
+    if (contextPhase) {
+      setLocalPhase(contextPhase);
+    }
+  }, [contextPhase]);
 
+  useEffect(() => {
     const loadSound = async () => {
       const { sound } = await Audio.Sound.createAsync(
         require("../../../assets/Sound/lol.wav")
@@ -30,7 +37,6 @@ const CountdownScreen = ({ route, navigation }) => {
     loadSound();
 
     return () => {
-
       if (soundRef.current) {
         soundRef.current.unloadAsync();
       }
@@ -51,21 +57,21 @@ const CountdownScreen = ({ route, navigation }) => {
   const handleComplete = async () => {
     await playSoundAndVibrate();
 
-  if (phase === "Work") {
-    setPhase("Break");
-    startTimer(breakMinutes * 60, "Break");
-    setKey((prev) => prev + 1);
-    return { shouldRepeat: true, newInitialRemainingTime: breakMinutes * 60 };
-  } else {
-    setPhase("Work");
-    startTimer(focusMinutes * 60, "Work");
-    setKey((prev) => prev + 1);
-    return { shouldRepeat: true, newInitialRemainingTime: focusMinutes * 60 };
-  }
-};
+    if (localPhase === "Work") {
+      setLocalPhase("Break");
+      startTimer(breakMinutes * 60, "Break");
+      setKey((prev) => prev + 1);
+      return { shouldRepeat: true, newInitialRemainingTime: breakMinutes * 60 };
+    } else {
+      setLocalPhase("Work");
+      startTimer(focusMinutes * 60, "Work");
+      setKey((prev) => prev + 1);
+      return { shouldRepeat: true, newInitialRemainingTime: focusMinutes * 60 };
+    }
+  };
 
-  const handleStop = () => {
-    stopTimer();
+  const handleStop = async () => {
+    await stopTimer();
     navigation.goBack();
   };
 
@@ -88,22 +94,24 @@ const CountdownScreen = ({ route, navigation }) => {
   return (
     <View style={styles.container}>
       <Text variant="headlineMedium" style={styles.phaseText}>
-        {phase} Time
+        {localPhase} Time
       </Text>
 
       <CountdownCircleTimer
         key={key}
         isPlaying={isPlaying}
-        duration={phase === "Work" ? focusMinutes * 60 : breakMinutes * 60}
-        colors={[phase === "Work" ? theme.colors.primary : theme.colors.tertiary]}
+        duration={localPhase === "Work" ? focusMinutes * 60 : breakMinutes * 60}
+        colors={[localPhase === "Work" ? theme.colors.primary : theme.colors.tertiary]}
         trailColor="#D3D3D3"
         strokeWidth={12}
         size={width * 0.7}
         onComplete={handleComplete}
       >
-        {({ remainingTime }) => {
-          const mins = Math.floor(remainingTime / 60);
-          const secs = remainingTime % 60;
+        {({ remainingTime: circleTime }) => {
+          // Use context remainingTime if available, otherwise use circle time
+          const displayTime = isRunning ? remainingTime : circleTime;
+          const mins = Math.floor(displayTime / 60);
+          const secs = displayTime % 60;
           return (
             <Text variant="displayMedium" style={styles.timerText}>
               {`${mins}:${secs < 10 ? "0" : ""}${secs}`}
