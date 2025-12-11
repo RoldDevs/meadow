@@ -144,13 +144,13 @@ export const scheduleRoutineNotification = async (routine) => {
       notificationDate.setDate(now.getDate() + daysUntilNext);
       notificationDate.setHours(notifHour, notifMinute, 0, 0);
 
-      // Use calendar trigger with repeats for weekly recurrence
+      // Android-compatible trigger: Use simple weekday trigger with repeats
+      // This will trigger every week on the specified day at the specified time
       const trigger = {
-        type: 'calendar',
-        repeats: true,
         hour: notifHour,
         minute: notifMinute,
         weekday: targetDayIndex + 1, // expo-notifications: Sunday = 1, Monday = 2, etc.
+        repeats: true,
       };
 
       const identifier = await Notifications.scheduleNotificationAsync({
