@@ -3,7 +3,8 @@ import {View,FlatList,StyleSheet, ScrollView, Alert, BackHandler, Pressable} fro
 import { useNavigation } from "@react-navigation/native";
 import {Appbar, Button, Text, Surface, Switch, FAB, useTheme, Chip, ActivityIndicator, Checkbox} from "react-native-paper";
 import { getAllRoutines, subscribeToRoutines, updateRoutine, deleteRoutine } from "../firebase/services/routinesService";
-import { scheduleRoutineNotification, cancelRoutineNotification, requestNotificationPermissions } from "../services/notificationService";
+import { scheduleRoutineNotification, cancelRoutineNotification, requestNotificationPermissions } from "../services/firestoreNotificationService";
+import { migrateAllRoutineTimeFormats } from "../utils/migrateRoutines";
 import TopAppBar from "../TopAppBar";
 
 const RoutinePage = () => {
@@ -17,6 +18,7 @@ const RoutinePage = () => {
   // Selection mode states
   const [selectModeEnabled, setSelectModeEnabled] = useState(false);
   const [selectedRoutines, setSelectedRoutines] = useState([]);
+  const [migrating, setMigrating] = useState(false);
 
 
   // Request notification permissions on mount
@@ -46,6 +48,21 @@ const RoutinePage = () => {
     ? routines.filter((routine) => routine.days.includes(selectedDay))
     : routines;
 
+  // Format time from 24-hour format (HH:MM) to 12-hour format with AM/PM
+  const formatTimeDisplay = (timeString) => {
+    if (!timeString) return '';
+    
+    // Handle both "HH:MM" and "HH:MM AM/PM" formats
+    if (timeString.includes(' ')) {
+      return timeString; // Already formatted
+    }
+    
+    const [hours, minutes] = timeString.split(':').map(num => parseInt(num, 10));
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
+  };
+
   const toggleRoutine = async (id) => {
     try {
       const routine = routines.find(r => r.id === id);
@@ -53,20 +70,16 @@ const RoutinePage = () => {
         const newEnabledState = !routine.enabled;
         
         if (newEnabledState) {
-          // Enabling routine - schedule notification
-          const notificationIds = await scheduleRoutineNotification({
+          // Enabling routine - schedule notification in Firestore
+          await scheduleRoutineNotification({
             ...routine,
+            id: routine.id,
             enabled: true,
           });
-          await updateRoutine(id, { 
-            enabled: true, 
-            notificationIds: notificationIds || routine.notificationIds 
-          });
+          await updateRoutine(id, { enabled: true });
         } else {
-          // Disabling routine - cancel notification
-          if (routine.notificationIds) {
-            await cancelRoutineNotification(routine.notificationIds);
-          }
+          // Disabling routine - cancel notification in Firestore
+          await cancelRoutineNotification(routine.id);
           await updateRoutine(id, { enabled: false });
         }
         
@@ -113,13 +126,9 @@ const RoutinePage = () => {
           style: "destructive",
           onPress: async () => {
             try {
-              // Cancel notifications for selected routines
+              // Cancel notifications for selected routines in Firestore
               const cancelPromises = selectedRoutines.map(routineId => {
-                const routine = routines.find(r => r.id === routineId);
-                if (routine?.notificationIds) {
-                  return cancelRoutineNotification(routine.notificationIds);
-                }
-                return Promise.resolve();
+                return cancelRoutineNotification(routineId);
               });
               await Promise.all(cancelPromises);
               
@@ -191,7 +200,7 @@ const RoutinePage = () => {
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>{item.name}</Text>
               <Text style={styles.timeText}>
-                {`${item.startTime}${item.endTime ? ` - ${item.endTime}` : ""}`}
+                {`${formatTimeDisplay(item.startTime)}${item.endTime ? ` - ${formatTimeDisplay(item.endTime)}` : ""}`}
               </Text>
               <Text style={styles.daysText}>{item.days.join(", ")}</Text>
             </View>
@@ -204,6 +213,35 @@ const RoutinePage = () => {
           </View>
         </Surface>
       </Pressable>
+    );
+  };
+
+  // Migration function
+  const handleMigration = async () => {
+    Alert.alert(
+      "Migrate Time Formats",
+      "This will update all routines to use a standardized time format and reschedule notifications. This only needs to be done once. Continue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Migrate",
+          onPress: async () => {
+            setMigrating(true);
+            try {
+              const result = await migrateAllRoutineTimeFormats();
+              Alert.alert(
+                "Migration Complete",
+                `Successfully migrated ${result.success} out of ${result.total} routine(s).${result.failed > 0 ? ` ${result.failed} failed.` : ''}`
+              );
+            } catch (error) {
+              console.error('Migration error:', error);
+              Alert.alert('Error', 'Failed to migrate routines. Please try again or recreate your routines.');
+            } finally {
+              setMigrating(false);
+            }
+          }
+        }
+      ]
     );
   };
 

@@ -1,0 +1,34 @@
+[debug] [2025-12-11T11:10:49.396Z] ----------------------------------------------------------------------
+[debug] [2025-12-11T11:10:49.399Z] Command:       C:\nvm4w\nodejs\node.exe C:\Users\Ghost\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only firestore
+[debug] [2025-12-11T11:10:49.400Z] CLI Version:   14.27.0
+[debug] [2025-12-11T11:10:49.400Z] Platform:      win32
+[debug] [2025-12-11T11:10:49.400Z] Node Version:  v23.11.0
+[debug] [2025-12-11T11:10:49.400Z] Time:          Thu Dec 11 2025 19:10:49 GMT+0800 (Philippine Standard Time)
+[debug] [2025-12-11T11:10:49.400Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-12-11T11:10:49.624Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-12-11T11:10:49.624Z] > authorizing via signed-in user (edselcabaluna21@gmail.com)
+[debug] [2025-12-11T11:10:49.625Z] [iam] checking project meadow-c8096 for permissions ["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]
+[debug] [2025-12-11T11:10:49.626Z] Checked if tokens are valid: true, expires at: 1765454706051
+[debug] [2025-12-11T11:10:49.626Z] Checked if tokens are valid: true, expires at: 1765454706051
+[debug] [2025-12-11T11:10:49.627Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/meadow-c8096:testIamPermissions [none]
+[debug] [2025-12-11T11:10:49.627Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/meadow-c8096:testIamPermissions x-goog-quota-user=projects/meadow-c8096
+[debug] [2025-12-11T11:10:49.627Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/meadow-c8096:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[debug] [2025-12-11T11:10:50.650Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/meadow-c8096:testIamPermissions 200
+[debug] [2025-12-11T11:10:50.650Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/meadow-c8096:testIamPermissions {}
+[debug] [2025-12-11T11:10:50.651Z] [iam] error while checking permissions, command may fail: Authorization failed. This account is missing the following required permissions on project meadow-c8096:
+
+  datastore.indexes.create
+  datastore.indexes.delete
+  datastore.indexes.list
+  datastore.indexes.update
+  firebase.projects.get
+[info] 
+[info] === Deploying to 'meadow-c8096'...
+[info] 
+[info] i  deploying firestore 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[info] i  firestore: ensuring required API firestore.googleapis.com is enabled... 
+[debug] [2025-12-11T11:10:50.658Z] Checked if tokens are valid: true, expires at: 1765454706051
+[debug] [2025-12-11T11:10:50.658Z] Checked if tokens are valid: true, expires at: 1765454706051
+[debug] [2025-12-11T11:10:50.658Z] >>> [apiv2][query] GET https://firestore.googleapis.com/v1/projects/meadow-c8096/databases/(default) [none]

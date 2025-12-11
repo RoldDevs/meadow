@@ -1,67 +1,14 @@
 /**
- * Device Service
+ * Device Service - ANDROID ONLY
  * Manages unique device identification for data isolation
  * Each device gets a unique ID that persists across app sessions
- * Works on web, iOS, and Android
  */
 
-import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Application from 'expo-application';
 
 const DEVICE_ID_KEY = '@meadow_device_id';
-
 let cachedDeviceId = null;
-let Application = null;
-let AsyncStorage = null;
-
-// Conditionally import platform-specific modules
-if (Platform.OS !== 'web') {
-  try {
-    Application = require('expo-application');
-    AsyncStorage = require('@react-native-async-storage/async-storage').default;
-  } catch (error) {
-    console.warn('Could not load native modules:', error);
-  }
-}
-
-/**
- * Get storage interface based on platform
- */
-const getStorage = () => {
-  if (Platform.OS === 'web') {
-    // Use localStorage for web
-    return {
-      getItem: async (key) => {
-        try {
-          return localStorage.getItem(key);
-        } catch (error) {
-          console.error('localStorage.getItem error:', error);
-          return null;
-        }
-      },
-      setItem: async (key, value) => {
-        try {
-          localStorage.setItem(key, value);
-        } catch (error) {
-          console.error('localStorage.setItem error:', error);
-        }
-      },
-      removeItem: async (key) => {
-        try {
-          localStorage.removeItem(key);
-        } catch (error) {
-          console.error('localStorage.removeItem error:', error);
-        }
-      }
-    };
-  } else {
-    // Use AsyncStorage for native platforms
-    return AsyncStorage || {
-      getItem: async () => null,
-      setItem: async () => {},
-      removeItem: async () => {}
-    };
-  }
-};
 
 /**
  * Generate a unique device ID
@@ -87,28 +34,22 @@ export const getDeviceId = async () => {
   }
 
   try {
-    const storage = getStorage();
-    
     // Try to get stored device ID
-    const storedId = await storage.getItem(DEVICE_ID_KEY);
+    const storedId = await AsyncStorage.getItem(DEVICE_ID_KEY);
     if (storedId) {
       cachedDeviceId = storedId;
       return storedId;
     }
 
-    // Generate a new device ID
+    // Generate a new device ID using Expo's installation ID
     let deviceId;
-    
-    // Try to use Expo's installation ID on native platforms
-    if (Platform.OS !== 'web' && Application) {
-      try {
-        const installationId = await Application.getInstallationIdAsync();
-        if (installationId) {
-          deviceId = installationId;
-        }
-      } catch (error) {
-        console.warn('Could not get installation ID:', error);
+    try {
+      const installationId = await Application.getInstallationIdAsync();
+      if (installationId) {
+        deviceId = installationId;
       }
+    } catch (error) {
+      console.warn('Could not get installation ID:', error);
     }
 
     // Fallback: Generate a UUID-like ID
@@ -117,7 +58,7 @@ export const getDeviceId = async () => {
     }
 
     // Store the device ID for future use
-    await storage.setItem(DEVICE_ID_KEY, deviceId);
+    await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
     cachedDeviceId = deviceId;
 
     return deviceId;
@@ -135,8 +76,7 @@ export const getDeviceId = async () => {
  */
 export const clearDeviceId = async () => {
   try {
-    const storage = getStorage();
-    await storage.removeItem(DEVICE_ID_KEY);
+    await AsyncStorage.removeItem(DEVICE_ID_KEY);
     cachedDeviceId = null;
   } catch (error) {
     console.error('Error clearing device ID:', error);

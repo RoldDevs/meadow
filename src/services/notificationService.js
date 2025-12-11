@@ -1,28 +1,60 @@
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
 
-// Configure notification handler
+// Lazy import Platform to avoid initialization issues
+let Platform = null;
+
+// Flag to track if notification handler has been set up
+let notificationHandlerSetup = false;
+
+// Get Platform safely
+const getPlatform = () => {
+  if (!Platform) {
+    try {
+      Platform = require('react-native').Platform;
+    } catch (error) {
+      console.warn('Could not load Platform:', error);
+      // Return a safe fallback
+      return { OS: 'unknown' };
+    }
+  }
+  return Platform;
+};
+
+// Configure notification handler lazily
 // This ensures notifications are NOT persistent and can be dismissed
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    // Don't make notifications persistent/ongoing
-    priority: Notifications.AndroidNotificationPriority.HIGH,
-    // Ensure notifications are not sticky (can be dismissed)
-    ...(Platform.OS === 'android' && {
-      sticky: false,
-      autoDismiss: true,
-    }),
-  }),
-});
+const setupNotificationHandler = () => {
+  if (notificationHandlerSetup) return;
+  
+  try {
+    const platform = getPlatform();
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+        // Don't make notifications persistent/ongoing
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+        // Ensure notifications are not sticky (can be dismissed)
+        ...(platform.OS === 'android' && {
+          sticky: false,
+          autoDismiss: true,
+        }),
+      }),
+    });
+    notificationHandlerSetup = true;
+  } catch (error) {
+    console.warn('Error setting up notification handler:', error);
+  }
+};
 
 /**
  * Request notification permissions
  */
 export const requestNotificationPermissions = async () => {
   try {
+    // Setup notification handler first
+    setupNotificationHandler();
+    
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
@@ -37,7 +69,8 @@ export const requestNotificationPermissions = async () => {
     }
 
     // Configure Android notification channel
-    if (Platform.OS === 'android') {
+    const platform = getPlatform();
+    if (platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('routine-reminders', {
         name: 'Routine Reminders',
         importance: Notifications.AndroidImportance.HIGH,
@@ -54,13 +87,19 @@ export const requestNotificationPermissions = async () => {
 };
 
 /**
- * Schedule a notification for a routine (5 minutes before start time)
- * Uses calendar triggers to ensure notifications only fire at the exact scheduled time
+ * Schedule notifications for a routine
+ * Schedules TWO notifications per day:
+ * 1. 5 minutes before start time (reminder)
+ * 2. At exact start time (start notification)
+ * Uses weekday triggers for weekly recurring notifications
  * @param {Object} routine - The routine object
- * @returns {Promise<string|null>} - The notification identifier or null
+ * @returns {Promise<string|null>} - Comma-separated notification identifiers or null
  */
 export const scheduleRoutineNotification = async (routine) => {
   try {
+    // Setup notification handler first
+    setupNotificationHandler();
+    
     if (!routine.enabled) {
       return null; // Don't schedule if routine is disabled
     }
@@ -72,35 +111,55 @@ export const scheduleRoutineNotification = async (routine) => {
       console.log('Cancelled existing notifications before scheduling new ones');
     }
 
-    // Parse start time (format: "HH:MM AM/PM" or "HH:MM")
+    // Parse start time (format: "HH:MM" in 24-hour format, or "HH:MM AM/PM")
     const timeString = routine.startTime.trim();
-    const parts = timeString.split(' ');
-    const [hours, minutes] = parts[0].split(':').map(Number);
-    const period = parts[1]; // May be undefined for 24-hour format
     
-    // Convert to 24-hour format
-    let hour24 = hours;
-    if (period) {
-      if (period.toUpperCase() === 'PM' && hours !== 12) {
-        hour24 = hours + 12;
-      } else if (period.toUpperCase() === 'AM' && hours === 12) {
-        hour24 = 0;
+    // Handle different time formats
+    let startHour24, minutes;
+    
+    if (timeString.includes(' ')) {
+      // Format: "HH:MM AM/PM"
+      const parts = timeString.split(' ');
+      const timeParts = parts[0].split(':');
+      const hours = parseInt(timeParts[0], 10);
+      minutes = parseInt(timeParts[1], 10);
+      const period = parts[1];
+      
+      // Convert to 24-hour format
+      if (period && period.toUpperCase() === 'PM' && hours !== 12) {
+        startHour24 = hours + 12;
+      } else if (period && period.toUpperCase() === 'AM' && hours === 12) {
+        startHour24 = 0;
+      } else {
+        startHour24 = hours;
       }
+    } else {
+      // Format: "HH:MM" (24-hour)
+      const timeParts = timeString.split(':');
+      startHour24 = parseInt(timeParts[0], 10);
+      minutes = parseInt(timeParts[1], 10);
+    }
+    
+    // Validate parsed values
+    if (isNaN(startHour24) || isNaN(minutes)) {
+      console.error('Failed to parse time:', timeString);
+      return null;
     }
 
-    // Calculate notification time (5 minutes before)
-    let notifHour = hour24;
-    let notifMinute = minutes - 5;
+    // Calculate reminder time (5 minutes before)
+    let reminderHour = startHour24;
+    let reminderMinute = minutes - 5;
     
-    if (notifMinute < 0) {
-      notifMinute += 60;
-      notifHour -= 1;
-      if (notifHour < 0) {
-        notifHour = 23;
+    if (reminderMinute < 0) {
+      reminderMinute += 60;
+      reminderHour -= 1;
+      if (reminderHour < 0) {
+        reminderHour = 23;
       }
     }
 
     // Day mapping: JS getDay() to day name
+    // Expo Notifications uses weekday: 1 = Sunday, 2 = Monday, ..., 7 = Saturday
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     
     // Get current date and time
@@ -108,103 +167,118 @@ export const scheduleRoutineNotification = async (routine) => {
     const currentDayIndex = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
+    const currentTimeInMinutes = currentHour * 60 + currentMinute;
 
     console.log('Scheduling routine:', routine.name);
-    console.log('Notification time:', notifHour, ':', notifMinute);
+    console.log('Start time:', startHour24, ':', minutes);
+    console.log('Reminder time:', reminderHour, ':', reminderMinute);
     console.log('Current:', dayNames[currentDayIndex], currentHour, ':', currentMinute);
 
     const notificationIds = [];
     
-    // Schedule a separate notification for each day
+    // Schedule notifications for each selected day
     for (const day of routine.days) {
       const targetDayIndex = dayNames.indexOf(day);
       
       if (targetDayIndex === -1) {
-        console.log(`Invalid day: ${day}`);
+        console.log(`Invalid day: ${day}, skipping`);
         continue;
       }
 
-      const currentTimeInMinutes = currentHour * 60 + currentMinute;
-      const notifTimeInMinutes = notifHour * 60 + notifMinute;
+      // Expo Notifications weekday: 1 = Sunday, 2 = Monday, ..., 7 = Saturday
+      const expoWeekday = targetDayIndex + 1;
       const isToday = (targetDayIndex === currentDayIndex);
-      const timePassedToday = isToday && (currentTimeInMinutes >= notifTimeInMinutes);
       
-      // CRITICAL: If it's today, ALWAYS schedule for next week to prevent immediate notification
-      // Weekday triggers fire immediately if today matches, so we avoid that
-      if (isToday) {
-        console.log(`${day}: Today detected - scheduling for NEXT WEEK only to prevent immediate notification`);
-        
-        // Schedule using weekday trigger but it will start from next week automatically
-        // The key is that we're not scheduling for today, so it won't fire immediately
+      // Calculate times in minutes for comparison
+      const reminderTimeInMinutes = reminderHour * 60 + reminderMinute;
+      const startTimeInMinutes = startHour24 * 60 + minutes;
+      
+      // Helper function to schedule a notification with weekday trigger
+      // The weekday trigger with repeats=true will automatically handle weekly recurrence
+      // It will fire on the next occurrence of that weekday at the specified time
+      const scheduleWeeklyNotification = async (hour, minute, message, type) => {
+        // Use weekday trigger with repeats for weekly recurrence
+        // Expo Notifications handles the scheduling automatically:
+        // - If it's today and time hasn't passed, it fires today
+        // - If it's today and time has passed, or if it's a future day, it fires on the next occurrence
+        // - With repeats=true, it continues weekly
         const identifier = await Notifications.scheduleNotificationAsync({
           content: {
-            title: 'Routine Reminder',
-            body: `${routine.name} starts in 5 minutes`,
+            title: type === 'reminder' ? 'Routine Reminder' : 'Routine Start',
+            body: message,
             data: { 
               routineId: routine.id, 
               routineName: routine.name,
-              day: day 
+              day: day,
+              type: type
             },
             sound: true,
             priority: Notifications.AndroidNotificationPriority.HIGH,
             categoryIdentifier: 'routine-reminder',
           },
           trigger: {
-            hour: notifHour,
-            minute: notifMinute,
-            weekday: targetDayIndex + 1,
+            hour: hour,
+            minute: minute,
+            weekday: expoWeekday,
             repeats: true,
           },
         });
         
-        notificationIds.push(identifier);
-        console.log(`Scheduled recurring notification for ${day} starting next week at ${notifHour}:${notifMinute.toString().padStart(2, '0')}`);
-      } else {
-        // It's a future day - use weekday trigger normally
-        // But ensure it's actually in the future by checking
-        let daysUntilNext = targetDayIndex - currentDayIndex;
-        if (daysUntilNext < 0) {
-          daysUntilNext += 7;
-        }
+        return identifier;
+      };
+
+      // Schedule reminder notification (5 minutes before)
+      try {
+        const reminderId = await scheduleWeeklyNotification(
+          reminderHour,
+          reminderMinute,
+          `${routine.name} starts in 5 minutes`,
+          'reminder'
+        );
+        notificationIds.push(reminderId);
         
-        // Calculate next occurrence date to verify it's in the future
+        // Calculate next occurrence for logging
+        let daysUntilNext = targetDayIndex - currentDayIndex;
+        if (daysUntilNext < 0) daysUntilNext += 7;
+        if (isToday && currentTimeInMinutes >= reminderTimeInMinutes) {
+          daysUntilNext = 7; // Time passed today, next week
+        }
         const nextDate = new Date(now);
         nextDate.setDate(now.getDate() + daysUntilNext);
-        nextDate.setHours(notifHour, notifMinute, 0, 0);
+        nextDate.setHours(reminderHour, reminderMinute, 0, 0);
         
-        if (nextDate <= now) {
-          // Shouldn't happen, but safety check
-          console.log(`${day}: Date is in past, skipping`);
-          continue;
+        console.log(`Scheduled reminder for ${day} at ${reminderHour}:${reminderMinute.toString().padStart(2, '0')} (next: ${nextDate.toLocaleDateString()}, weekly recurring)`);
+      } catch (error) {
+        console.error(`Error scheduling reminder for ${day}:`, error);
+      }
+
+      // Schedule start notification (exact time)
+      try {
+        const startId = await scheduleWeeklyNotification(
+          startHour24,
+          minutes,
+          `${routine.name} starts now`,
+          'start'
+        );
+        notificationIds.push(startId);
+        
+        // Calculate next occurrence for logging
+        let daysUntilNext = targetDayIndex - currentDayIndex;
+        if (daysUntilNext < 0) daysUntilNext += 7;
+        if (isToday && currentTimeInMinutes >= startTimeInMinutes) {
+          daysUntilNext = 7; // Time passed today, next week
         }
+        const nextDate = new Date(now);
+        nextDate.setDate(now.getDate() + daysUntilNext);
+        nextDate.setHours(startHour24, minutes, 0, 0);
         
-        const identifier = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Routine Reminder',
-            body: `${routine.name} starts in 5 minutes`,
-            data: { 
-              routineId: routine.id, 
-              routineName: routine.name,
-              day: day 
-            },
-            sound: true,
-            priority: Notifications.AndroidNotificationPriority.HIGH,
-            categoryIdentifier: 'routine-reminder',
-          },
-          trigger: {
-            hour: notifHour,
-            minute: notifMinute,
-            weekday: targetDayIndex + 1,
-            repeats: true,
-          },
-        });
-        
-        notificationIds.push(identifier);
-        console.log(`Scheduled recurring notification for ${day} at ${notifHour}:${notifMinute.toString().padStart(2, '0')} (next occurrence: ${nextDate.toLocaleDateString()})`);
+        console.log(`Scheduled start notification for ${day} at ${startHour24}:${minutes.toString().padStart(2, '0')} (next: ${nextDate.toLocaleDateString()}, weekly recurring)`);
+      } catch (error) {
+        console.error(`Error scheduling start notification for ${day}:`, error);
       }
     }
 
-    console.log(`Total notifications scheduled: ${notificationIds.length}`);
+    console.log(`Total notifications scheduled: ${notificationIds.length} (${notificationIds.length / routine.days.length} per day)`);
     return notificationIds.join(',');
   } catch (error) {
     console.error('Error scheduling routine notification:', error);
@@ -290,20 +364,23 @@ export const cancelAllNotifications = async () => {
  */
 export const showTimerNotification = async (phase, remainingTime) => {
   try {
+    // Setup notification handler first
+    setupNotificationHandler();
+    
     const minutes = Math.floor(remainingTime / 60);
     const seconds = remainingTime % 60;
     const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
     
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: phase === 'Work' ? '🎯 Focus Time' : '☕ Break Time',
+        title: phase === 'Work' ? 'Focus Time' : 'Break Time',
         body: `${timeString} remaining`,
         data: { type: 'timer', phase, remainingTime },
         sound: false,
         priority: Notifications.AndroidNotificationPriority.MAX,
         categoryIdentifier: 'timer',
         sticky: true,
-        ...(Platform.OS === 'android' && {
+        ...(getPlatform().OS === 'android' && {
           channelId: 'timer-ongoing',
         }),
       },
@@ -330,7 +407,11 @@ export const dismissTimerNotification = async () => {
  * Setup notification channels for Android
  */
 export const setupNotificationChannels = async () => {
-  if (Platform.OS === 'android') {
+  // Setup notification handler first
+  setupNotificationHandler();
+  
+  const platform = getPlatform();
+  if (platform.OS === 'android') {
     try {
       // Channel for routine reminders
       await Notifications.setNotificationChannelAsync('routine-reminders', {

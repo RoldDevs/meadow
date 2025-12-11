@@ -3,7 +3,7 @@ import { View, StyleSheet, Alert, ScrollView } from "react-native";
 import {TextInput,Button,Switch,Text,Card, Chip, useTheme, ActivityIndicator} from "react-native-paper";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { createRoutine, updateRoutine } from "../../firebase/services/routinesService";
-import { scheduleRoutineNotification, cancelRoutineNotification } from "../../services/notificationService";
+import { scheduleRoutineNotification, cancelRoutineNotification } from "../../services/firestoreNotificationService";
 import TopAppBar from "../../TopAppBar";
 
 const CreateRoutinePage = ({ route, navigation }) => {
@@ -27,18 +27,35 @@ const CreateRoutinePage = ({ route, navigation }) => {
       setIncludeEndTime(!!routine.endTime);
       
       // Parse time strings to Date objects
+      // Handles both "HH:MM" (24-hour) and "HH:MM AM/PM" formats
+      const parseTime = (timeString) => {
+        const date = new Date();
+        if (timeString.includes(' ')) {
+          // Format: "HH:MM AM/PM"
+          const [time, period] = timeString.split(' ');
+          let [hours, minutes] = time.split(':').map(num => parseInt(num, 10));
+          
+          if (period.toUpperCase() === 'PM' && hours !== 12) {
+            hours += 12;
+          } else if (period.toUpperCase() === 'AM' && hours === 12) {
+            hours = 0;
+          }
+          
+          date.setHours(hours, minutes);
+        } else {
+          // Format: "HH:MM" (24-hour)
+          const [hours, minutes] = timeString.split(':').map(num => parseInt(num, 10));
+          date.setHours(hours, minutes);
+        }
+        return date;
+      };
+      
       if (routine.startTime) {
-        const [hours, minutes] = routine.startTime.split(':');
-        const startDate = new Date();
-        startDate.setHours(parseInt(hours), parseInt(minutes));
-        setStartTime(startDate);
+        setStartTime(parseTime(routine.startTime));
       }
       
       if (routine.endTime) {
-        const [hours, minutes] = routine.endTime.split(':');
-        const endDate = new Date();
-        endDate.setHours(parseInt(hours), parseInt(minutes));
-        setEndTime(endDate);
+        setEndTime(parseTime(routine.endTime));
       }
     }
   }, [isEdit, routine]);
@@ -61,12 +78,17 @@ const CreateRoutinePage = ({ route, navigation }) => {
 
     setSaving(true);
     try {
+      // Format time as HH:MM (24-hour format) for consistent parsing
+      const formatTime = (date) => {
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        return `${hours}:${minutes}`;
+      };
+      
       const routineData = {
         name: name.trim(),
-        startTime: startTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        endTime: includeEndTime
-          ? endTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-          : null,
+        startTime: formatTime(startTime),
+        endTime: includeEndTime ? formatTime(endTime) : null,
         days,
         enabled: true,
       };
@@ -74,10 +96,8 @@ const CreateRoutinePage = ({ route, navigation }) => {
       let routineId;
       
       if (isEdit && routine) {
-        // Cancel old notifications
-        if (routine.notificationIds) {
-          await cancelRoutineNotification(routine.notificationIds);
-        }
+        // Cancel old notifications in Firestore
+        await cancelRoutineNotification(routine.id);
         
         // Update existing routine
         await updateRoutine(routine.id, routineData);
@@ -87,16 +107,11 @@ const CreateRoutinePage = ({ route, navigation }) => {
         routineId = await createRoutine(routineData);
       }
 
-      // Schedule notification (5 minutes before start time)
-      const notificationIds = await scheduleRoutineNotification({
+      // Schedule notifications in Firestore (5 minutes before + exact start time)
+      await scheduleRoutineNotification({
         ...routineData,
         id: routineId,
       });
-
-      // Update routine with notification IDs
-      if (notificationIds) {
-        await updateRoutine(routineId, { notificationIds });
-      }
       
       navigation.goBack();
     } catch (error) {

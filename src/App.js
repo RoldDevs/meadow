@@ -21,7 +21,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { FirebaseProvider } from './contexts/FirebaseContext';
 import { seedFirestore } from '../scripts/seedFirestore';
 import { startTimeTracking, endTimeTracking, cleanupOldStats } from './services/timeTrackingService';
-import { setupNotificationChannels, requestNotificationPermissions } from './services/notificationService';
+import { setupNotificationChannels, requestNotificationPermissions } from './services/firestoreNotificationService';
+import { startNotificationService, stopNotificationService } from './services/notificationBackgroundTask';
 
 //colors, theming, etc.
 import { useColorScheme } from 'react-native';
@@ -69,6 +70,8 @@ export default function App() {
         await requestNotificationPermissions();
         // Setup notification channels
         await setupNotificationChannels();
+        // Start the notification checking service
+        startNotificationService();
         // Seed collections with initial data if they're empty
         await seedFirestore();
         // Clean up old time tracking stats
@@ -84,7 +87,10 @@ export default function App() {
       initializeCollections();
     }, 1000);
     
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      stopNotificationService();
+    };
   }, []);
 
   // Track app usage time
