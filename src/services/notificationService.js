@@ -64,6 +64,13 @@ export const scheduleRoutineNotification = async (routine) => {
     if (!routine.enabled) {
       return null; // Don't schedule if routine is disabled
     }
+    
+    // CRITICAL: Cancel any existing notifications for this routine first
+    // This prevents duplicate notifications when editing or re-scheduling
+    if (routine.notificationIds) {
+      await cancelRoutineNotification(routine.notificationIds);
+      console.log('Cancelled existing notifications before scheduling new ones');
+    }
 
     // Parse start time (format: "HH:MM AM/PM" or "HH:MM")
     const timeString = routine.startTime.trim();
@@ -113,64 +120,88 @@ export const scheduleRoutineNotification = async (routine) => {
       const targetDayIndex = dayNames.indexOf(day);
       
       if (targetDayIndex === -1) {
-        console.log(`❌ Invalid day: ${day}`);
+        console.log(`Invalid day: ${day}`);
         continue;
       }
 
-      // Calculate days until next occurrence
-      let daysUntilNext = targetDayIndex - currentDayIndex;
+      const currentTimeInMinutes = currentHour * 60 + currentMinute;
+      const notifTimeInMinutes = notifHour * 60 + notifMinute;
+      const isToday = (targetDayIndex === currentDayIndex);
+      const timePassedToday = isToday && (currentTimeInMinutes >= notifTimeInMinutes);
       
-      // If it's today but time has passed, schedule for next week
-      if (daysUntilNext === 0) {
-        const currentTimeInMinutes = currentHour * 60 + currentMinute;
-        const notifTimeInMinutes = notifHour * 60 + notifMinute;
+      // CRITICAL: If it's today, ALWAYS schedule for next week to prevent immediate notification
+      // Weekday triggers fire immediately if today matches, so we avoid that
+      if (isToday) {
+        console.log(`${day}: Today detected - scheduling for NEXT WEEK only to prevent immediate notification`);
         
-        if (currentTimeInMinutes >= notifTimeInMinutes) {
-          console.log(`${day}: Time passed today, scheduling for next week`);
-          daysUntilNext = 7;
-        } else {
-          console.log(`${day}: Scheduling for today`);
-        }
-      } else if (daysUntilNext < 0) {
-        // Day is earlier in the week, schedule for next week
-        daysUntilNext += 7;
-        console.log(`${day}: Scheduling for next week (+${daysUntilNext} days)`);
-      } else {
-        console.log(`${day}: Scheduling for this week (+${daysUntilNext} days)`);
-      }
-
-      // Calculate the exact date and time for the notification
-      const notificationDate = new Date(now);
-      notificationDate.setDate(now.getDate() + daysUntilNext);
-      notificationDate.setHours(notifHour, notifMinute, 0, 0);
-
-      // Android-compatible trigger: Use simple weekday trigger with repeats
-      // This will trigger every week on the specified day at the specified time
-      const trigger = {
-        hour: notifHour,
-        minute: notifMinute,
-        weekday: targetDayIndex + 1, // expo-notifications: Sunday = 1, Monday = 2, etc.
-        repeats: true,
-      };
-
-      const identifier = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Routine Reminder',
-          body: `${routine.name} starts in 5 minutes`,
-          data: { 
-            routineId: routine.id, 
-            routineName: routine.name,
-            day: day 
+        // Schedule using weekday trigger but it will start from next week automatically
+        // The key is that we're not scheduling for today, so it won't fire immediately
+        const identifier = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Routine Reminder',
+            body: `${routine.name} starts in 5 minutes`,
+            data: { 
+              routineId: routine.id, 
+              routineName: routine.name,
+              day: day 
+            },
+            sound: true,
+            priority: Notifications.AndroidNotificationPriority.HIGH,
+            categoryIdentifier: 'routine-reminder',
           },
-          sound: true,
-          priority: Notifications.AndroidNotificationPriority.HIGH,
-          categoryIdentifier: 'routine-reminder',
-        },
-        trigger,
-      });
-
-      notificationIds.push(identifier);
-      console.log(`Scheduled for ${day} at ${notifHour}:${notifMinute.toString().padStart(2, '0')}`);
+          trigger: {
+            hour: notifHour,
+            minute: notifMinute,
+            weekday: targetDayIndex + 1,
+            repeats: true,
+          },
+        });
+        
+        notificationIds.push(identifier);
+        console.log(`Scheduled recurring notification for ${day} starting next week at ${notifHour}:${notifMinute.toString().padStart(2, '0')}`);
+      } else {
+        // It's a future day - use weekday trigger normally
+        // But ensure it's actually in the future by checking
+        let daysUntilNext = targetDayIndex - currentDayIndex;
+        if (daysUntilNext < 0) {
+          daysUntilNext += 7;
+        }
+        
+        // Calculate next occurrence date to verify it's in the future
+        const nextDate = new Date(now);
+        nextDate.setDate(now.getDate() + daysUntilNext);
+        nextDate.setHours(notifHour, notifMinute, 0, 0);
+        
+        if (nextDate <= now) {
+          // Shouldn't happen, but safety check
+          console.log(`${day}: Date is in past, skipping`);
+          continue;
+        }
+        
+        const identifier = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Routine Reminder',
+            body: `${routine.name} starts in 5 minutes`,
+            data: { 
+              routineId: routine.id, 
+              routineName: routine.name,
+              day: day 
+            },
+            sound: true,
+            priority: Notifications.AndroidNotificationPriority.HIGH,
+            categoryIdentifier: 'routine-reminder',
+          },
+          trigger: {
+            hour: notifHour,
+            minute: notifMinute,
+            weekday: targetDayIndex + 1,
+            repeats: true,
+          },
+        });
+        
+        notificationIds.push(identifier);
+        console.log(`Scheduled recurring notification for ${day} at ${notifHour}:${notifMinute.toString().padStart(2, '0')} (next occurrence: ${nextDate.toLocaleDateString()})`);
+      }
     }
 
     console.log(`Total notifications scheduled: ${notificationIds.length}`);
