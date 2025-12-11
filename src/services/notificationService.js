@@ -55,21 +55,21 @@ export const requestNotificationPermissions = async () => {
 
 /**
  * Schedule a notification for a routine (5 minutes before start time)
- * Uses CALENDAR triggers for reliable weekly scheduling
+ * Uses calendar triggers to ensure notifications only fire at the exact scheduled time
  * @param {Object} routine - The routine object
  * @returns {Promise<string|null>} - The notification identifier or null
  */
 export const scheduleRoutineNotification = async (routine) => {
   try {
     if (!routine.enabled) {
-      return null;
+      return null; // Don't schedule if routine is disabled
     }
 
-    // Parse start time
+    // Parse start time (format: "HH:MM AM/PM" or "HH:MM")
     const timeString = routine.startTime.trim();
     const parts = timeString.split(' ');
     const [hours, minutes] = parts[0].split(':').map(Number);
-    const period = parts[1];
+    const period = parts[1]; // May be undefined for 24-hour format
     
     // Convert to 24-hour format
     let hour24 = hours;
@@ -93,91 +93,88 @@ export const scheduleRoutineNotification = async (routine) => {
       }
     }
 
-    // Day mapping for calendar trigger (Expo uses 1=Sunday, 2=Monday, etc.)
-    const dayToNumber = {
-      'Sun': 1,
-      'Mon': 2,
-      'Tue': 3,
-      'Wed': 4,
-      'Thu': 5,
-      'Fri': 6,
-      'Sat': 7
-    };
-
+    // Day mapping: JS getDay() to day name
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    
+    // Get current date and time
     const now = new Date();
+    const currentDayIndex = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
-    const currentTimeInMinutes = currentHour * 60 + currentMinute;
-    const notifTimeInMinutes = notifHour * 60 + notifMinute;
 
-    console.log('\n=== SCHEDULING ROUTINE NOTIFICATION ===');
-    console.log('Routine:', routine.name);
-    console.log('Current:', now.toLocaleString());
-    console.log('Notification time:', `${notifHour}:${String(notifMinute).padStart(2, '0')}`);
-    console.log('Current time in minutes:', currentTimeInMinutes);
-    console.log('Notif time in minutes:', notifTimeInMinutes);
+    console.log('Scheduling routine:', routine.name);
+    console.log('Notification time:', notifHour, ':', notifMinute);
+    console.log('Current:', dayNames[currentDayIndex], currentHour, ':', currentMinute);
 
     const notificationIds = [];
     
-    for (const dayName of routine.days) {
-      const weekday = dayToNumber[dayName];
+    // Schedule a separate notification for each day
+    for (const day of routine.days) {
+      const targetDayIndex = dayNames.indexOf(day);
       
-      // Get JavaScript day number (0=Sunday, 1=Monday, etc.)
-      const jsDayNumber = weekday === 1 ? 0 : weekday - 1;
-      const currentJsDayNumber = now.getDay();
-      
-      // Check if this is today and if the time has passed
-      const isToday = jsDayNumber === currentJsDayNumber;
-      const timeHasPassed = currentTimeInMinutes >= notifTimeInMinutes;
-      
-      if (isToday && timeHasPassed) {
-        console.log(`${dayName}: ✗ SKIPPING - time has passed today`);
+      if (targetDayIndex === -1) {
+        console.log(`❌ Invalid day: ${day}`);
         continue;
       }
+
+      // Calculate days until next occurrence
+      let daysUntilNext = targetDayIndex - currentDayIndex;
       
-      // Use calendar-based trigger with weekly repeat
+      // If it's today but time has passed, schedule for next week
+      if (daysUntilNext === 0) {
+        const currentTimeInMinutes = currentHour * 60 + currentMinute;
+        const notifTimeInMinutes = notifHour * 60 + notifMinute;
+        
+        if (currentTimeInMinutes >= notifTimeInMinutes) {
+          console.log(`${day}: Time passed today, scheduling for next week`);
+          daysUntilNext = 7;
+        } else {
+          console.log(`${day}: Scheduling for today`);
+        }
+      } else if (daysUntilNext < 0) {
+        // Day is earlier in the week, schedule for next week
+        daysUntilNext += 7;
+        console.log(`${day}: Scheduling for next week (+${daysUntilNext} days)`);
+      } else {
+        console.log(`${day}: Scheduling for this week (+${daysUntilNext} days)`);
+      }
+
+      // Calculate the exact date and time for the notification
+      const notificationDate = new Date(now);
+      notificationDate.setDate(now.getDate() + daysUntilNext);
+      notificationDate.setHours(notifHour, notifMinute, 0, 0);
+
+      // Use calendar trigger with repeats for weekly recurrence
       const trigger = {
+        type: 'calendar',
+        repeats: true,
         hour: notifHour,
         minute: notifMinute,
-        weekday: weekday,
-        repeats: true,
+        weekday: targetDayIndex + 1, // expo-notifications: Sunday = 1, Monday = 2, etc.
       };
 
-      try {
-        const identifier = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: '⏰ Routine Reminder',
-            body: `${routine.name} starts in 5 minutes`,
-            data: { 
-              routineId: routine.id, 
-              routineName: routine.name,
-              type: 'routine'
-            },
-            sound: true,
-            priority: Notifications.AndroidNotificationPriority.HIGH,
-            categoryIdentifier: 'routine-reminder',
+      const identifier = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Routine Reminder',
+          body: `${routine.name} starts in 5 minutes`,
+          data: { 
+            routineId: routine.id, 
+            routineName: routine.name,
+            day: day 
           },
-          trigger,
-        });
+          sound: true,
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+          categoryIdentifier: 'routine-reminder',
+        },
+        trigger,
+      });
 
-        notificationIds.push(identifier);
-        console.log(`${dayName}: ✓ Scheduled (ID: ${identifier}, weekday: ${weekday})`);
-      } catch (error) {
-        console.error(`${dayName}: ✗ Failed to schedule`, error);
-      }
+      notificationIds.push(identifier);
+      console.log(`Scheduled for ${day} at ${notifHour}:${notifMinute.toString().padStart(2, '0')}`);
     }
 
-    // Verify scheduled notifications
-    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    const routineNotifs = scheduled.filter(n => n.trigger.type === 'calendar');
-    console.log(`\nVerification: ${routineNotifs.length} calendar notifications scheduled`);
-    routineNotifs.forEach(notif => {
-      const day = Object.keys(dayToNumber).find(k => dayToNumber[k] === notif.trigger.weekday);
-      console.log(`- ${day || 'Unknown'}: ${notif.trigger.hour}:${String(notif.trigger.minute).padStart(2, '0')} (ID: ${notif.identifier})`);
-    });
-    console.log('=== SCHEDULING COMPLETE ===\n');
-
-    return notificationIds.length > 0 ? notificationIds.join(',') : null;
+    console.log(`Total notifications scheduled: ${notificationIds.length}`);
+    return notificationIds.join(',');
   } catch (error) {
     console.error('Error scheduling routine notification:', error);
     return null;

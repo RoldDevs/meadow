@@ -87,9 +87,6 @@ const CreateRoutinePage = ({ route, navigation }) => {
         routineId = await createRoutine(routineData);
       }
 
-      // Small delay before scheduling to ensure routine is saved
-      await new Promise(resolve => setTimeout(resolve, 500));
-
       // Schedule notification (5 minutes before start time)
       const notificationIds = await scheduleRoutineNotification({
         ...routineData,
